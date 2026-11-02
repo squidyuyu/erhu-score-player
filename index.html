@@ -105,9 +105,9 @@ details summary{cursor:pointer;min-height:36px}
           <span class="lbl">Hz</span>
           <span class="lbl">音色</span>
           <select id="voice" aria-label="示範音色">
-            <option value="piano">鋼琴感</option>
-            <option value="organ">風琴</option>
-            <option value="sine">純音</option>
+            <option value="piano">柔和長音</option>
+            <option value="organ">風琴長音</option>
+            <option value="sine">純音長音</option>
           </select>
         </div>
         <div class="row">
@@ -251,7 +251,7 @@ function voice(f,t,dur,kind,gain=.5){
   const stoppers=[o];
   if(kind==='sine'){o.type='sine';g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(gain,t+.02);g.gain.setValueAtTime(gain,Math.max(t+.02,end-.04));g.gain.linearRampToValueAtTime(0,end)}
   else if(kind==='organ'){o.type='square';const lp=ac.createBiquadFilter();lp.frequency.value=1800;o.connect(lp);lp.connect(g);g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(gain*.5,t+.03);g.gain.setValueAtTime(gain*.5,Math.max(t+.03,end-.05));g.gain.linearRampToValueAtTime(0,end)}
-  else{o.type='triangle';const h=ac.createOscillator(),hg=ac.createGain();h.frequency.value=f*2;h.type='sine';hg.gain.value=.25;h.connect(hg);hg.connect(g);h.start(t);h.stop(end+.02);stoppers.push(h);g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(gain,t+.006);g.gain.exponentialRampToValueAtTime(Math.max(gain*.08,.001),end);g.gain.linearRampToValueAtTime(0,end+.015)}
+  else{o.type='triangle';const h=ac.createOscillator(),hg=ac.createGain();h.frequency.value=f*2;h.type='sine';hg.gain.value=.25;h.connect(hg);hg.connect(g);h.start(t);h.stop(end+.02);stoppers.push(h);g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(gain,t+.02);g.gain.setValueAtTime(gain,Math.max(t+.02,end-.04));g.gain.linearRampToValueAtTime(0,end)}
   if(kind!=='organ')o.connect(g);
   g.connect(master);o.start(t);o.stop(end+.02);
   return{g,stoppers};
@@ -305,7 +305,7 @@ function schedule(){
     metroFor(ev,nextT,spb);
     const m=noteMidi(ev.note,S.score);
     if(m!==null&&!ev.tiedIn&&S.melody){
-      voice(freqOf(m),nextT,ev.sound*spb*.94,S.voice);
+      voice(freqOf(m),nextT,ev.sound*spb-NOTE_GAP,S.voice);
       soundingUntil=Math.max(soundingUntil,nextT+ev.sound*spb);
     }
     hlQueue.push({t:nextT,bi:ev.bi,ni:ev.ni});
@@ -432,6 +432,7 @@ function followEvents(sc){
   }));
   return out;
 }
+const NOTE_GAP=.03;  // 音與音之間只留換弓般的短間隔（秒）
 const ONSET_LAG=.06;  // 分析視窗造成的起音延遲（秒）
 const OUTPUT_LAG=.05;  // 提早一點出聲，抵消喇叭輸出延遲
 class Follower{
@@ -534,7 +535,7 @@ class Follower{
     if(now+lead<at)return null;
     this.sounded=i;
     if(now-at>this.spb)return null;
-    return{i,t:Math.max(at,now),dur:next.len*this.spb*.92,midi:next.midi};
+    return{i,t:Math.max(at,now),dur:next.len*this.spb-NOTE_GAP,midi:next.midi};
   }
   results(){
     return this.ev.map((e,i)=>{
