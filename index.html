@@ -256,6 +256,15 @@ function voice(f,t,dur,kind,gain=.5){
   g.connect(master);o.start(t);o.stop(end+.02);
   return{g,stoppers};
 }
+/* 喇叭模式固定用純音，麥克風同步濾掉該頻率，留下二胡的泛音來測音高 */
+let refT=-1;
+const refKind=(k=S.voice)=>S.out==='speaker'?'sine':k;
+function refVoice(m,t,dur,k){
+  const f=freqOf(m);
+  if(notch&&S.out==='speaker')notch.frequency.setValueAtTime(f,t);
+  soundingUntil=Math.max(soundingUntil,t+Math.min(dur,3600));refT=t;
+  return voice(f,t,dur,refKind(k));
+}
 function click(t,accent){
   const o=ac.createOscillator(),g=ac.createGain();
   o.type='square';o.frequency.value=accent?1800:1200;
@@ -264,7 +273,7 @@ function click(t,accent){
 }
 
 /* ---------- 播放排程 ---------- */
-let timeline=[],seqPos=0,nextT=0,timer=null,hlQueue=[],soundingUntil=0,rafId=0,wake=null;
+let timeline=[],seqPos=0,nextT=0,timer=null,hlQueue=[],soundingUntil=0,wake=null;
 function flatten(sc){
   const out=[];
   sc.bars.forEach((bar,bi)=>{let beat=0;bar.forEach((n,ni)=>{out.push({bi,ni,beat,len:n.b,note:n});beat+=n.b})});
@@ -305,8 +314,7 @@ function schedule(){
     metroFor(ev,nextT,spb);
     const m=noteMidi(ev.note,S.score);
     if(m!==null&&!ev.tiedIn&&S.melody){
-      voice(freqOf(m),nextT,ev.sound*spb-NOTE_GAP,S.voice);
-      soundingUntil=Math.max(soundingUntil,nextT+ev.sound*spb);
+      refVoice(m,nextT,ev.sound*spb-NOTE_GAP);
     }
     hlQueue.push({t:nextT,bi:ev.bi,ni:ev.ni});
     nextT+=dur;seqPos++;
@@ -321,7 +329,6 @@ function paint(){
     const el=noteEl(h.bi,h.ni);
     if(el){el.classList.add('playing');const r=el.getBoundingClientRect();if(r.bottom>innerHeight-20||r.top<0)el.scrollIntoView({block:'center',behavior:'smooth'})}
   }
-  rafId=requestAnimationFrame(paint);
 }
 const noteEl=(b,n)=>document.querySelector(`.note[data-b="${b}"][data-n="${n}"]`);
 async function play(){
@@ -336,41 +343,33 @@ async function play(){
   for(let i=0;i<beats;i++)click(nextT+i*spb,i===0);
   nextT+=beats*spb;
   say('預備拍…');
-  timer=setInterval(schedule,25);
-  schedule();paint();
+  timer=setInterval(()=>{schedule();paint()},25);
+  schedule();
   try{if(navigator.wakeLock)wake=await navigator.wakeLock.request('screen')}catch(e){}
 }
 function stop(){
-  S.playing=false;clearInterval(timer);timer=null;cancelAnimationFrame(rafId);hlQueue=[];
+  S.playing=false;clearInterval(timer);timer=null;hlQueue=[];
   $('playBtn').textContent='▶ 播放';say('');
   document.querySelectorAll('.note.playing').forEach(e=>e.classList.remove('playing'));
   if(wake){wake.release().catch(()=>{});wake=null}
 }
 
 /* ---------- 長音 ---------- */
-let tone=null,toneTimer=null;
+let tone=null;
 function targetMidi(){if(!S.sel)return null;const n=S.score.bars[S.sel.bi]?.[S.sel.ni];return n?noteMidi(n,S.score):null}
 function toneBurst(){
   const m=targetMidi();if(m===null)return;
-  const t=ac.currentTime+.02,kind=S.voice==='piano'?'organ':S.voice;
-  if(S.out==='speaker'){
-    // 喇叭會被麥克風收到，所以響 2 秒、停 2 秒，停的時候才測你的音
-    tone=voice(freqOf(m),t,2,kind);soundingUntil=t+2;
-    toneTimer=setTimeout(toneBurst,4000);
-  }else{
-    tone=voice(freqOf(m),t,3600,kind);
-  }
+  tone=refVoice(m,ac.currentTime+.02,3600,S.voice==='piano'?'organ':S.voice);
 }
 function startTone(){if(targetMidi()===null)return;audio();if(S.playing)stop();stopTone();toneBurst();$('toneBtn').classList.add('on');$('toneBtn').textContent='停止長音'}
 function stopTone(){
-  clearTimeout(toneTimer);toneTimer=null;
   if(tone){try{tone.g.gain.cancelScheduledValues(ac.currentTime);tone.g.gain.setTargetAtTime(0,ac.currentTime,.02);tone.stoppers.forEach(o=>o.stop(ac.currentTime+.15))}catch(e){}tone=null}
   soundingUntil=0;
   $('toneBtn').classList.remove('on');$('toneBtn').textContent='長音';
 }
 
 /* ---------- 麥克風 ---------- */
-let micStream=null,analyser=null,micTimer=null,recent=[];
+let micStream=null,analyser=null,notch=null,micTimer=null,recent=[];
 async function micOn(){
   audio();
   if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){say('這個頁面無法使用麥克風。手機與平板要從 https 網址開啟。');return}
@@ -380,7 +379,8 @@ async function micOn(){
   const src=ac.createMediaStreamSource(micStream);
   const hp=ac.createBiquadFilter();hp.type='highpass';hp.frequency.value=200;
   analyser=ac.createAnalyser();analyser.fftSize=4096;analyser.smoothingTimeConstant=0;
-  src.connect(hp);hp.connect(analyser);
+  notch=ac.createBiquadFilter();notch.type='notch';notch.Q.value=12;notch.frequency.value=NOTCH_OFF;
+  src.connect(hp);hp.connect(notch);notch.connect(analyser);
   $('micBtn').classList.add('on');$('micBtn').textContent='關閉麥克風';
   const buf=new Float32Array(analyser.fftSize);
   micTimer=setInterval(()=>{analyser.getFloatTimeDomainData(buf);showPitch(buf,ac.sampleRate)},40);
@@ -395,11 +395,13 @@ function micOff(){
 function showPitch(buf,sr){
   let e=0;for(let i=0;i<buf.length;i++)e+=buf[i]*buf[i];
   const rms=Math.sqrt(e/buf.length),sounding=ac.currentTime<soundingUntil+.15;
-  // 喇叭發聲時，只有比喇叭漏音明顯大聲才算你的琴聲
-  const speakerBusy=S.out==='speaker'&&sounding&&!(S.spkLevel>0&&rms>S.spkLevel*2.5);
+  // 換音瞬間濾波還沒穩定，跳過這段，避免示範音被當成琴聲
+  if(S.out==='speaker'&&ac.currentTime>=refT&&ac.currentTime<refT+.14)return;
+  // 濾波後還比喇叭殘音大，才算你的琴聲
+  const speakerBusy=S.out==='speaker'&&sounding&&rms<S.spkLevel*2;
   if(speakerBusy){
     recent=[];if(F)F.frame(ac.currentTime,null);
-    $('pitchText').textContent='喇叭發聲中，換你時再測';$('needle').classList.remove('good');return;
+    $('pitchText').textContent='等你拉…';$('needle').classList.remove('good');return;
   }
   const p=detectPitch(buf,sr);
   if(F)F.frame(ac.currentTime,p&&p.conf>=.8?midiOf(p.freq):null);
@@ -432,6 +434,7 @@ function followEvents(sc){
   }));
   return out;
 }
+const NOTCH_OFF=30;  // 不濾音時把濾波移到聽不到的低頻
 const NOTE_GAP=.03;  // 音與音之間只留換弓般的短間隔（秒）
 const ONSET_LAG=.06;  // 分析視窗造成的起音延遲（秒）
 const OUTPUT_LAG=.05;  // 提早一點出聲，抵消喇叭輸出延遲
@@ -566,15 +569,16 @@ async function calibrate(){
   if(!micStream)await micOn();
   if(!micStream)return false;
   $('followText').textContent='校正喇叭中，先不要拉…';
-  const start=ac.currentTime+.1;let max=0;
-  [62,69,74].forEach((m,i)=>voice(freqOf(m),start+i*.45,.4,S.voice));
+  const start=ac.currentTime+.1,levels=[];
+  [62,69,74].forEach((m,i)=>refVoice(m,start+i*.45,.4));
   const buf=new Float32Array(analyser.fftSize);
   await new Promise(k=>{const iv=setInterval(()=>{
     analyser.getFloatTimeDomainData(buf);let e=0;for(const x of buf)e+=x*x;
-    if(ac.currentTime>start)max=Math.max(max,Math.sqrt(e/buf.length));
+    const into=(ac.currentTime-start)%.45;  // 只取每個音的穩定段，避開換音瞬間
+    if(ac.currentTime>start&&into>.2&&into<.38)levels.push(Math.sqrt(e/buf.length));
     if(ac.currentTime>start+1.4){clearInterval(iv);k()}
   },40)});
-  S.spkLevel=max;save('spkLevel',max);
+  levels.sort((a,b)=>a-b);S.spkLevel=Math.max(levels[levels.length>>1]||0,.002);save('spkResidual',S.spkLevel);
   $('followText').textContent='喇叭校正完成';
   return true;
 }
@@ -598,7 +602,7 @@ async function startFollow(){
   followTimer=setInterval(()=>{
     if(!F)return;
     const d=F.due(ac.currentTime);
-    if(d&&(S.accompany||F.repeat)){voice(freqOf(d.midi),d.t,d.dur,S.voice);soundingUntil=Math.max(soundingUntil,d.t+d.dur)}
+    if(d&&(S.accompany||F.repeat))refVoice(d.midi,d.t,d.dur);
   },25);
   try{if(navigator.wakeLock)wake=await navigator.wakeLock.request('screen')}catch(e){}
 }
@@ -640,7 +644,7 @@ function showResults(rs){
     const row=document.createElement('div');row.className='resRow';
     const t=document.createElement('b');t.textContent=`第 ${r.bi+1} 小節 ${pitchName(r.midi)}：${r.cents>0?'+':''}${r.cents} 音分`;
     const std=document.createElement('button');std.textContent='聽標準音';
-    std.onclick=()=>{audio();voice(freqOf(r.midi),ac.currentTime+.02,1.2,S.voice==='piano'?'organ':S.voice)};
+    std.onclick=()=>{audio();voice(freqOf(r.midi),ac.currentTime+.02,1.2,refKind(S.voice==='piano'?'organ':S.voice))};
     const mine=document.createElement('button');mine.textContent='聽我拉的';mine.dataset.mine=1;mine.disabled=!recBuf;
     mine.onclick=()=>playMine(r.span);
     const go=document.createElement('button');go.textContent='到這個音';
@@ -862,7 +866,7 @@ function setupEditor(){
   for(const[n,m]of TONICS){const o=document.createElement('option');o.value=n;o.dataset.m=m;o.textContent='1='+n;$('tonicSel').append(o)}
   $('tonicSel').onchange=e=>change(()=>{S.score.tonicName=e.target.value;S.score.tonic=+e.target.selectedOptions[0].dataset.m});
 }
-function preview(){const n=curNote(),m=n&&noteMidi(n,S.score);if(m!=null){audio();voice(freqOf(m),ac.currentTime+.01,.4,S.voice)}}
+function preview(){const n=curNote(),m=n&&noteMidi(n,S.score);if(m!=null){audio();refVoice(m,ac.currentTime+.01,.4)}}
 
 /* ---------- 譜庫（只存在這台裝置） ---------- */
 let db=null;
@@ -912,11 +916,13 @@ function setMode(m){
 function setOut(o){
   S.out=o;save('out',o);
   document.querySelectorAll('[data-out]').forEach(b=>b.classList.toggle('on',b.dataset.out===o));
-  $('outHint').textContent=o==='speaker'?'喇叭：示範音響著時暫停測音；長音會響 2 秒、停 2 秒，換你拉。':'耳機：示範音和測音可以同時進行。';
+  $('outHint').textContent=o==='speaker'?'喇叭：固定用純音，示範音和測音可同時進行。音量開中等，平板離琴遠一點。':'耳機：示範音和測音可以同時進行，音色可自由選。';
+  $('voice').disabled=o==='speaker';
+  if(notch&&o!=='speaker')notch.frequency.setValueAtTime(NOTCH_OFF,ac.currentTime);
   if(tone)startTone();
 }
 function init(){
-  S.a4=load('a4',442);S.voice=load('voice','piano');S.spkLevel=load('spkLevel',0);
+  S.a4=load('a4',442);S.voice=load('voice','piano');S.spkLevel=load('spkResidual',0);
   $('a4').value=S.a4;$('voice').value=S.voice;
   setOut(load('out','speaker'));setupEditor();
   $('playBtn').onclick=()=>S.playing?stop():play();
