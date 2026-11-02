@@ -5,166 +5,155 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>二胡譜播放器</title>
 <style>
-:root{--bg:#f6f2e9;--panel:#fffdf8;--ink:#2b2622;--muted:#756b60;--line:#dcd3c4;--accent:#a4372a;--accent-ink:#fff;--good:#2e7d4f;--warn:#b86e00;--hl:#f6dfae;--sel:#cfe3f5;--bad:#fbe1dc}
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1d1b19;--panel:#292623;--ink:#f1ebe2;--muted:#aca295;--line:#46403a;--accent:#d9604f;--accent-ink:#1d1b19;--good:#5fbf85;--warn:#e0a34a;--hl:#6c5522;--sel:#2c4c66;--bad:#5a2c26}}
-:root[data-theme="dark"]{--bg:#1d1b19;--panel:#292623;--ink:#f1ebe2;--muted:#aca295;--line:#46403a;--accent:#d9604f;--accent-ink:#1d1b19;--good:#5fbf85;--warn:#e0a34a;--hl:#6c5522;--sel:#2c4c66;--bad:#5a2c26}
+:root{--ground:#f4f4f3;--surface:#fff;--raised:#efefee;--active:#e6e6e4;--border:#e4e4e2;--rule:#efefed;--control:#cfcfcc;--text:#141414;--muted:#5f5f5c;--primary:#1c1c1b;--on-primary:#fff;--accent:#1d5fbf;--accent-pale:#dfeafa;--good:#247b50;--bad:#c4242a;--bad-pale:#ffedea;--band:#e3f1e8}
+:root[data-theme="dark"]{--ground:#000;--surface:#111;--raised:#222;--active:#2a2a2a;--border:#2e2e2e;--rule:#222;--control:#4c4c4c;--text:#fff;--muted:#b4b4b4;--primary:#fff;--on-primary:#000;--accent:#6ba3f2;--accent-pale:#1c2c44;--good:#3fc07a;--bad:#e5566f;--bad-pale:#2c1a20;--band:#172a1d}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--ground:#000;--surface:#111;--raised:#222;--active:#2a2a2a;--border:#2e2e2e;--rule:#222;--control:#4c4c4c;--text:#fff;--muted:#b4b4b4;--primary:#fff;--on-primary:#000;--accent:#6ba3f2;--accent-pale:#1c2c44;--good:#3fc07a;--bad:#e5566f;--bad-pale:#2c1a20;--band:#172a1d}}
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
-body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.5 "Noto Sans TC","Microsoft JhengHei",system-ui,sans-serif;padding-bottom:40px}
+body{margin:0;background:var(--ground);color:var(--text);font:16px/1.5 "Noto Sans TC","Microsoft JhengHei",system-ui,sans-serif;display:flex;flex-direction:column;min-height:100dvh}
 button,select,input{font:inherit;color:inherit}
-button{min-height:46px;padding:6px 14px;border:1px solid var(--line);border-radius:8px;background:var(--panel);cursor:pointer;touch-action:manipulation}
-button:disabled{opacity:.45;cursor:default}
-button.on,button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
-select,input[type=number]{min-height:46px;padding:4px 8px;border:1px solid var(--line);border-radius:8px;background:var(--panel)}
-input[type=number]{width:84px}
-input[type=range]{flex:1;min-width:120px;height:32px;accent-color:var(--accent)}
-header{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 16px;background:var(--panel);border-bottom:1px solid var(--line)}
-h1{font-size:20px;margin:0 auto 0 0}
-main{max-width:1100px;margin:0 auto;padding:12px 16px}
-.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:8px 0}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:10px 0}
-.lbl{color:var(--muted);font-size:15px}
-.tabs{display:flex;gap:6px}
+button,summary{min-height:44px;padding:0 14px;border:1px solid var(--control);border-radius:6px;background:var(--surface);cursor:pointer;touch-action:manipulation;white-space:nowrap}
+button:hover,summary:hover{background:var(--raised)}
+button:focus-visible,select:focus-visible,input:focus-visible,summary:focus-visible{outline:2px solid var(--text);outline-offset:1px}
+button:disabled{color:var(--muted);background:var(--raised);cursor:default}
+button.on{background:var(--active);border-color:var(--control)}
+button.primary{background:var(--primary);border-color:var(--primary);color:var(--on-primary)}
+button.primary.on{background:var(--bad);border-color:var(--bad);color:#fff}
+select,input[type=number]{min-height:44px;padding:0 8px;border:1px solid var(--control);border-radius:6px;background:var(--surface)}
+input[type=number]{width:84px;font-variant-numeric:tabular-nums}
+input[type=range]{flex:1;min-width:80px;height:44px;margin:0;accent-color:var(--text)}
 .hidden{display:none!important}
-#status{min-height:24px;color:var(--muted);font-size:15px}
-.scoreHead{display:flex;flex-wrap:wrap;gap:4px 14px;align-items:baseline}
-.scoreHead h2{margin:0;font-size:21px}
-#score{display:grid;grid-template-columns:repeat(4,1fr);row-gap:20px;margin-top:12px}
+.lbl{color:var(--muted);font-size:14px}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.num{font-variant-numeric:tabular-nums}
+
+header{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 16px;background:var(--surface);border-bottom:1px solid var(--border)}
+.mark{display:flex;align-items:center;gap:8px;font-size:15px;font-weight:600;margin-right:auto}
+.mark svg{width:22px;height:22px;display:block}
+.seg{display:flex;border:1px solid var(--control);border-radius:6px;overflow:hidden}
+.seg button{border:0;border-radius:0;background:var(--surface)}
+.seg button+button{border-left:1px solid var(--control)}
+.seg button.on{background:var(--active);font-weight:600}
+#pieceSel{max-width:220px}
+
+main{flex:1;width:100%;max-width:1180px;margin:0 auto;padding:16px}
+.sheet{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:16px 20px}
+.titleRow{display:flex;flex-wrap:wrap;gap:4px 12px;align-items:baseline;margin-bottom:12px}
+h1{margin:0;font-size:24px;line-height:32px;font-weight:600}
+#viewBtn{margin-left:auto;align-self:center}
+#status{color:var(--muted);font-size:14px;min-height:0}
+#status:not(:empty){margin-bottom:8px}
+
+#score{display:grid;grid-template-columns:repeat(4,1fr);row-gap:16px}
 @media (max-width:640px){#score{grid-template-columns:repeat(2,1fr)}}
-.bar{position:relative;display:flex;align-items:flex-end;justify-content:space-around;min-height:92px;padding:18px 4px 12px;border-right:2px solid var(--ink)}
-.bar.bad{background:var(--bad)}
-.bar.inLoop{box-shadow:inset 0 -5px 0 var(--sel)}
-.barNo{position:absolute;top:0;left:4px;font-size:13px;color:var(--muted)}
-.beat{display:flex;align-items:flex-end}
-.note{position:relative;display:inline-flex;flex-direction:column;align-items:center;justify-content:flex-end;min-width:34px;min-height:60px;padding:8px 2px 12px;border:0;border-radius:6px;background:transparent;font-size:27px;font-weight:600;line-height:1}
-.note.playing{background:var(--hl)}
-.note.selected{outline:3px solid var(--accent)}
+.bar{position:relative;display:flex;align-items:flex-end;justify-content:space-around;min-height:92px;padding:18px 4px 12px;border-right:1.5px solid var(--text)}
+.bar.bad{background:var(--bad-pale)}
+.bar.inLoop{box-shadow:inset 0 -4px 0 var(--active)}
+.barNo{position:absolute;top:0;left:4px;font-size:12px;color:var(--muted)}
+.note{position:relative;display:inline-flex;flex-direction:column;align-items:center;justify-content:flex-end;min-width:34px;min-height:60px;padding:8px 2px 12px;border:0;border-radius:4px;background:transparent;font-size:28px;font-weight:500;line-height:1}
+.note:hover{background:var(--raised)}
+.note.playing{background:var(--accent-pale)}
+.note.selected{outline:2px solid var(--text);outline-offset:-2px}
+.note.follow{background:var(--accent);color:#fff}
+.note.off{color:var(--bad)}
 .hi,.lo{position:absolute;left:50%;width:6px;height:6px;margin-left:-3px;border-radius:50%;background:currentColor}
 .hi{top:1px}.lo{bottom:0}.lo2{bottom:7px}.hi2{top:8px}
 .ul{position:absolute;left:3px;right:3px;height:2px;background:currentColor;bottom:7px}
 .ul.u2{bottom:3px}
 .acc{position:absolute;left:1px;top:10px;font-size:15px}
-.ext{color:var(--muted);margin-left:16px;font-weight:600}
-.tie{position:absolute;left:50%;width:calc(100% + 44px);height:12px;top:-5px;border:2px solid var(--muted);border-bottom:0;border-radius:50% 50% 0 0/100% 100% 0 0;pointer-events:none}
-#meter{position:relative;height:36px;border-radius:7px;background:linear-gradient(90deg,var(--bad),transparent 38%,transparent 62%,var(--bad));border:1px solid var(--line);overflow:hidden}
-#meter::after{content:"";position:absolute;left:50%;top:0;bottom:0;width:2px;background:var(--good)}
-#needle{position:absolute;top:0;bottom:0;left:50%;width:7px;margin-left:-3px;border-radius:3px;background:var(--muted);transition:left .06s linear}
-#needle.good{background:var(--good)}
-#pitchText{font-size:21px;font-weight:600;min-height:32px}
-#edit{position:sticky;bottom:0;background:var(--panel);border-top:2px solid var(--accent);padding:10px 12px;margin:12px -12px -10px;z-index:3}
-.digit{min-width:46px;font-size:21px;font-weight:600}
-#srcImg{width:100%;height:auto;display:block;border-radius:6px}
-details summary{cursor:pointer;min-height:36px}
-#fileInput{display:none}
-.warn{color:var(--warn)}
-.note.follow{box-shadow:inset 0 -4px 0 var(--good)}
-.note.off{color:var(--warn)}
-.staffRow{display:block;width:100%;height:auto;margin-bottom:8px;color:var(--ink)}
+.ext{color:var(--muted);margin-left:16px;font-weight:500}
+.tie{position:absolute;left:50%;width:calc(100% + 44px);height:12px;top:-5px;border:1.5px solid var(--muted);border-bottom:0;border-radius:50% 50% 0 0/100% 100% 0 0;pointer-events:none}
+.staffRow{display:block;width:100%;height:auto;margin-bottom:4px;color:var(--text)}
 .sn{cursor:pointer}
-.sn.playing .hit{fill:var(--hl)}
-.sn.selected .hit{fill:var(--sel)}
-.sn.follow .hit{stroke:var(--good);stroke-width:2}
-.sn.off .head{fill:var(--warn);stroke:var(--warn)}
-#followText{min-height:26px}
-.resRow{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:6px 0;border-top:1px solid var(--line)}
-.resRow b{min-width:170px}
+.sn.playing .hit{fill:var(--accent-pale)}
+.sn.selected .hit{stroke:var(--text);stroke-width:2}
+.sn.follow .hit{fill:var(--accent-pale)}
+.sn.follow .head{fill:var(--accent);stroke:var(--accent)}
+.sn.off .head{fill:var(--bad);stroke:var(--bad)}
+
+/* 底部固定控制列：拉琴時不用捲動就碰得到 */
+#practiceBar{position:sticky;bottom:0;z-index:4;background:var(--surface);border-top:1px solid var(--border);padding:10px 16px calc(10px + env(safe-area-inset-bottom))}
+.dock{max-width:1148px;margin:0 auto;display:grid;gap:8px}
+.tuner{display:grid;grid-template-columns:minmax(150px,auto) 1fr auto auto;gap:12px;align-items:center}
+#pitchNote{font-size:24px;line-height:32px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+#pitchCents{font-size:14px;line-height:20px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap;display:block}
+#meter{position:relative;height:40px;border-radius:4px;background:var(--raised);overflow:hidden}
+#meter i{position:absolute;top:0;bottom:0;left:40%;width:20%;background:var(--band)}
+#meter b{position:absolute;bottom:2px;font-size:11px;font-weight:400;color:var(--muted);transform:translateX(-50%)}
+#meter::after{content:"";position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--muted)}
+#needle{position:absolute;top:4px;bottom:4px;left:50%;width:6px;margin-left:-3px;border-radius:2px;background:var(--muted);z-index:1}
+#needle.good{background:var(--good)}
+.lineInfo{display:flex;flex-wrap:wrap;gap:0 16px;font-size:14px;color:var(--muted)}
+#followText{font-weight:500;color:var(--text)}
+.transport{display:flex;gap:8px;align-items:center}
+.tempo{flex:1;display:flex;gap:8px;align-items:center;min-width:140px}
+#tempoVal{min-width:34px;text-align:right;font-size:18px;font-weight:600;font-variant-numeric:tabular-nums}
+#settings{position:relative}
+#settings summary{display:flex;align-items:center;list-style:none}
+#settings summary::-webkit-details-marker{display:none}
+.panel{position:absolute;right:0;bottom:52px;width:min(440px,calc(100vw - 32px));background:var(--surface);border:1px solid var(--control);border-radius:6px;padding:16px;display:grid;gap:12px;box-shadow:0 8px 24px rgba(0,0,0,.14)}
+.panel h2{margin:0;font-size:14px;font-weight:600}
+.panel section{display:grid;gap:8px}
+
+#editBar{margin-bottom:16px}
+#srcImg{width:100%;height:auto;display:block;border-radius:4px;margin-top:8px}
+#editBar summary{display:inline-flex;align-items:center;min-height:36px;font-size:14px}
+#edit{position:sticky;bottom:0;background:var(--surface);border-top:1px solid var(--control);padding:12px 20px;margin:16px -20px -16px;z-index:3;display:grid;gap:8px}
+.digit{min-width:46px;padding:0;font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}
+.bad-info{color:var(--bad);font-size:14px}
+#fileInput{display:none}
+
+#resultCard{margin-top:16px}
+#resultCard h2{margin:0;font-size:16px;font-weight:600}
+.resRow{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 0;border-top:1px solid var(--rule);margin-top:8px}
+.resRow b{min-width:190px;margin-right:auto;font-weight:500;font-variant-numeric:tabular-nums}
+
+@media (max-width:640px){
+  main{padding:8px}.sheet{padding:12px}
+  .mark span{display:none}.mark{margin-right:0}
+  #pieceSel{flex:1;min-width:0;max-width:none}
+  .tuner{grid-template-columns:1fr auto auto}
+  #meter{grid-column:1/-1;grid-row:2}
+  .transport{flex-wrap:wrap}
+  .tempo{order:3;flex-basis:100%}
+  #edit{margin:12px -12px -12px;padding:10px 12px}
+}
 </style>
 </head>
 <body>
 <header>
-  <h1>二胡譜播放器</h1>
+  <div class="mark">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 22V3M15 22V3M4 7h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="19" r="3" fill="currentColor"/></svg>
+    <span>二胡譜播放器</span>
+  </div>
   <select id="pieceSel" aria-label="選擇樂譜"></select>
   <button id="importBtn">匯入譜檔</button>
-  <input id="fileInput" type="file" accept=".json,application/json">
-  <div class="tabs">
+  <input id="fileInput" type="file" accept=".json,application/json" aria-label="選擇譜檔">
+  <div class="seg">
     <button id="tabPractice" class="on">練習</button>
     <button id="tabEdit">校正</button>
   </div>
 </header>
 <main>
-  <div id="practiceBar">
-    <div class="card">
-      <div class="row">
-        <button id="playBtn" class="primary">▶ 播放</button>
-        <button id="metroBtn" class="on">節拍器</button>
-        <button id="melodyBtn" class="on">旋律</button>
-        <span class="lbl">速度</span>
-        <input id="tempo" type="range" min="30" max="160" step="1" aria-label="速度">
-        <b id="tempoVal"></b>
-      </div>
-      <div class="row">
-        <button id="loopBtn">小節循環</button>
-        <span class="lbl">從</span><select id="loopA" aria-label="循環起始小節"></select>
-        <span class="lbl">到</span><select id="loopB" aria-label="循環結束小節"></select>
-      </div>
-      <details>
-        <summary class="lbl">聲音設定</summary>
-        <div class="row">
-          <span class="lbl">標準音 A4</span>
-          <input id="a4" type="number" min="400" max="480" step="1" aria-label="標準音頻率">
-          <span class="lbl">Hz</span>
-          <span class="lbl">音色</span>
-          <select id="voice" aria-label="示範音色">
-            <option value="piano">柔和長音</option>
-            <option value="organ">風琴長音</option>
-            <option value="sine">純音長音</option>
-          </select>
-        </div>
-        <div class="row">
-          <span class="lbl">聽法</span>
-          <button id="outSpeaker" data-out="speaker">喇叭</button>
-          <button id="outBoth" data-out="both">雙耳耳機</button>
-          <button id="outOne" data-out="one">單耳耳機</button>
-        </div>
-        <div id="outHint" class="lbl"></div>
-      </details>
-    </div>
-    <div class="card">
-      <div class="row">
-        <button id="micBtn">開啟麥克風</button>
-        <button id="toneBtn" disabled>長音</button>
-        <span id="targetText" class="lbl">點譜上的音，可把它設成對音目標</span>
-      </div>
-      <div id="meter"><div id="needle"></div></div>
-      <div id="pitchText"></div>
-    </div>
-    <div class="card">
-      <div class="row">
-        <button id="followBtn" class="primary">跟我練</button>
-        <button id="autoHoldBtn" class="on">停下放長音</button>
-        <button id="accBtn" class="on">跟著我播放</button>
-        <button id="calBtn">喇叭校正</button>
-      </div>
-      <div id="followText" class="lbl">開始後直接拉，工具會自己找到你在哪裡。判斷錯時，點譜上的音就能跳過去。</div>
-    </div>
-    <div id="resultCard" class="card hidden">
-      <div class="scoreHead"><h2>這次練習</h2><span id="resultMeta" class="lbl"></span></div>
-      <div id="resultList"></div>
-    </div>
-  </div>
-
-  <div id="editBar" class="card hidden">
+  <div id="editBar" class="sheet hidden">
     <details open>
-      <summary class="lbl">原譜對照</summary>
+      <summary>原譜對照</summary>
       <img id="srcImg" alt="原譜截圖">
       <div id="noSrc" class="lbl hidden">這份譜沒有附原譜截圖。</div>
     </details>
     <div class="row">
       <button id="undoBtn" disabled>復原</button>
       <button id="exportBtn">匯出譜檔</button>
-      <span class="lbl">調</span>
       <select id="tonicSel" aria-label="調性"></select>
-      <span id="badInfo" class="warn"></span>
+      <span id="badInfo" class="bad-info"></span>
     </div>
   </div>
-
   <div id="status" role="status"></div>
-
-  <section class="card">
-    <div class="scoreHead">
-      <h2 id="pieceTitle"></h2>
+  <section class="sheet">
+    <div class="titleRow">
+      <h1 id="pieceTitle"></h1>
       <span id="pieceMeta" class="lbl"></span>
-      <button id="viewBtn" style="margin-left:auto">看線譜</button>
+      <button id="viewBtn">看線譜</button>
     </div>
     <div id="score"></div>
     <div id="edit" class="hidden">
@@ -192,7 +181,82 @@ details summary{cursor:pointer;min-height:36px}
       </div>
     </div>
   </section>
+  <section id="resultCard" class="sheet hidden">
+    <div class="titleRow"><h2>這次練習</h2><span id="resultMeta" class="lbl"></span></div>
+    <div id="resultList"></div>
+  </section>
 </main>
+<div id="practiceBar">
+  <div class="dock">
+    <div class="tuner">
+      <div><span id="pitchNote">—</span><span id="pitchCents">麥克風未開</span></div>
+      <div id="meter" aria-hidden="true"><i></i><b style="left:6%">−50</b><b style="left:94%">+50</b><div id="needle"></div></div>
+      <button id="micBtn">開麥克風</button>
+      <button id="toneBtn" disabled>長音</button>
+    </div>
+    <div class="lineInfo">
+      <span id="followText">還沒開始</span>
+      <span id="targetText" class="num"></span>
+    </div>
+    <div class="transport">
+      <button id="followBtn" class="primary">跟我練</button>
+      <button id="playBtn">播放</button>
+      <div class="tempo">
+        <span class="lbl">速度</span>
+        <input id="tempo" type="range" min="30" max="160" step="1" aria-label="速度">
+        <span id="tempoVal"></span>
+      </div>
+      <button id="loopBtn">循環</button>
+      <details id="settings">
+        <summary>設定</summary>
+        <div class="panel">
+          <section>
+            <h2>循環範圍</h2>
+            <div class="row">
+              <select id="loopA" aria-label="循環起始小節"></select>
+              <span class="lbl">到</span>
+              <select id="loopB" aria-label="循環結束小節"></select>
+            </div>
+          </section>
+          <section>
+            <h2>播放時要有</h2>
+            <div class="row">
+              <button id="metroBtn" class="on">節拍器</button>
+              <button id="melodyBtn" class="on">旋律</button>
+            </div>
+          </section>
+          <section>
+            <h2>跟我練</h2>
+            <div class="row">
+              <button id="autoHoldBtn" class="on">停下放長音</button>
+              <button id="accBtn" class="on">跟著我播放</button>
+            </div>
+          </section>
+          <section>
+            <h2>聲音</h2>
+            <div class="seg" style="width:max-content">
+              <button id="outSpeaker" data-out="speaker">喇叭</button>
+              <button id="outBoth" data-out="both">雙耳</button>
+              <button id="outOne" data-out="one">單耳</button>
+            </div>
+            <div class="row">
+              <span class="lbl">A4</span>
+              <input id="a4" type="number" min="400" max="480" step="1" aria-label="標準音頻率">
+              <span class="lbl">Hz</span>
+              <select id="voice" aria-label="示範音色">
+                <option value="piano">柔和長音</option>
+                <option value="organ">風琴長音</option>
+                <option value="sine">純音長音</option>
+              </select>
+              <button id="calBtn">喇叭校正</button>
+            </div>
+            <div id="outHint" class="lbl"></div>
+          </section>
+        </div>
+      </details>
+    </div>
+  </div>
+</div>
 <script>
 'use strict';
 /* ---------- 共用資料 ---------- */
@@ -336,7 +400,7 @@ async function play(){
   audio();stopTone();
   seqPos=buildSeq(S.sel);
   if(!timeline.length){say('這段沒有音符');return}
-  S.playing=true;$('playBtn').textContent='■ 停止';
+  S.playing=true;$('playBtn').textContent='停止';$('playBtn').classList.add('on');
   hlQueue=[];
   const spb=60/S.bpm,beats=S.score.meter[0];
   nextT=ac.currentTime+.15;
@@ -349,7 +413,7 @@ async function play(){
 }
 function stop(){
   S.playing=false;clearInterval(timer);timer=null;hlQueue=[];
-  $('playBtn').textContent='▶ 播放';say('');
+  $('playBtn').textContent='播放';$('playBtn').classList.remove('on');say('');
   document.querySelectorAll('.note.playing').forEach(e=>e.classList.remove('playing'));
   if(wake){wake.release().catch(()=>{});wake=null}
 }
@@ -381,7 +445,7 @@ async function micOn(){
   analyser=ac.createAnalyser();analyser.fftSize=4096;analyser.smoothingTimeConstant=0;
   notch=ac.createBiquadFilter();notch.type='notch';notch.Q.value=12;notch.frequency.value=NOTCH_OFF;
   src.connect(hp);hp.connect(notch);notch.connect(analyser);
-  $('micBtn').classList.add('on');$('micBtn').textContent='關閉麥克風';
+  $('micBtn').classList.add('on');$('micBtn').textContent='關麥克風';setPitch('—','等你拉');
   const buf=new Float32Array(analyser.fftSize);
   micTimer=setInterval(()=>{analyser.getFloatTimeDomainData(buf);showPitch(buf,ac.sampleRate)},40);
 }
@@ -389,9 +453,10 @@ function micOff(){
   clearInterval(micTimer);micTimer=null;
   if(micStream)micStream.getTracks().forEach(t=>t.stop());
   micStream=null;recent=[];
-  $('micBtn').classList.remove('on');$('micBtn').textContent='開啟麥克風';
-  $('pitchText').textContent='';$('needle').style.left='50%';$('needle').classList.remove('good');
+  $('micBtn').classList.remove('on');$('micBtn').textContent='開麥克風';
+  setPitch('—','麥克風未開');$('needle').style.left='50%';$('needle').classList.remove('good');
 }
+const setPitch=(a,b)=>{$('pitchNote').textContent=a;$('pitchCents').textContent=b};
 function showPitch(buf,sr){
   let e=0;for(let i=0;i<buf.length;i++)e+=buf[i]*buf[i];
   const rms=Math.sqrt(e/buf.length),sounding=ac.currentTime<soundingUntil+.15;
@@ -401,13 +466,13 @@ function showPitch(buf,sr){
   const speakerBusy=S.out==='speaker'&&sounding&&rms<S.spkLevel*2;
   if(speakerBusy){
     recent=[];if(F)F.frame(ac.currentTime,null);
-    $('pitchText').textContent='等你拉…';$('needle').classList.remove('good');return;
+    setPitch('—','等你拉');$('needle').classList.remove('good');return;
   }
   const p=detectPitch(buf,sr);
   if(F)F.frame(ac.currentTime,p&&p.conf>=.8?midiOf(p.freq):null);
   if(!p||p.conf<.8){
     if(recent.length)recent.shift();
-    if(!recent.length){$('pitchText').textContent='等你拉…';$('needle').classList.remove('good')}
+    if(!recent.length){setPitch('—','等你拉');$('needle').classList.remove('good')}
     return;
   }
   recent.push(midiOf(p.freq));if(recent.length>5)recent.shift();
@@ -417,9 +482,7 @@ function showPitch(buf,sr){
   const near=Math.abs(cents)<=10;
   $('needle').style.left=(50+clamped)+'%';$('needle').classList.toggle('good',near);
   const tail=near?'準':cents>0?'偏高':'偏低';
-  const head=`${pitchName(m)}（簡譜 ${jianpuOf(m,S.score)}）`;
-  const refTxt=target!==null?`，對 ${pitchName(target)}`:'';
-  $('pitchText').textContent=`${head}${refTxt}：${cents>0?'+':''}${cents} 音分，${tail}`;
+  setPitch(`${pitchName(m)}　${jianpuOf(m,S.score)}`,`${cents>0?'+':''}${cents} 音分 ${tail}`);
 }
 
 /* ---------- 跟隨引擎：不碰聲音與畫面，方便用模擬資料測試 ---------- */
@@ -491,12 +554,13 @@ class Follower{
     if((same.length>=1||b-a<=3)&&!this.repeat){this.repeat={a,b};this.cb.repeat&&this.cb.repeat(this.repeat)}
   }
   fitTempo(){
-    const h=this.hist;if(h.length<3)return;
+    const h=this.hist;if(h.length<4)return;
     const n=h.length,mb=h.reduce((s,x)=>s+x.beat,0)/n,mt=h.reduce((s,x)=>s+x.t,0)/n;
     let num=0,den=0;for(const x of h){num+=(x.beat-mb)*(x.t-mt);den+=(x.beat-mb)**2}
     if(!den)return;
     const v=num/den;
-    if(v>.2&&v<3)this.spb=this.spb*.3+v*.7;
+    // 單次最多變動約六成，漏聽一個音時速度不會暴衝
+    if(v>.2&&v<3)this.spb=this.spb*.3+Math.min(this.spb*1.6,Math.max(this.spb*.6,v))*.7;
   }
   frame(t,m){
     if(m!=null&&this.pos>=0&&this.cur&&t-this.cur.start>.08&&Math.abs(m-this.ev[this.pos].midi)<1.2){
@@ -560,7 +624,7 @@ function paintFollow(){
 function followStatus(){
   if(!F)return;
   const e=F.pos>=0?F.ev[F.pos]:null;
-  const parts=[e?`第 ${e.bi+1} 小節`:'等你開始',`♩≈${Math.round(60/F.spb)}`];
+  const parts=[e?`第 ${e.bi+1} 小節`:'等你開始',`速度 ${Math.round(60/F.spb)}`];
   if(F.hold)parts.push('長音陪你對準');
   if(F.repeat)parts.push(`反覆第 ${F.repeat.a+1}–${F.repeat.b+1} 小節，陪你慢練`);
   $('followText').textContent=parts.join('　');
@@ -598,7 +662,7 @@ async function startFollow(){
   });
   F.autoHold=S.autoHold;
   startRec();
-  $('followBtn').textContent='結束練習';$('followBtn').classList.add('on');followStatus();
+  $('followBtn').textContent='結束';$('followBtn').classList.add('on');followStatus();
   followTimer=setInterval(()=>{
     if(!F)return;
     const d=F.due(ac.currentTime);
@@ -637,7 +701,7 @@ function playMine(span){
 function showResults(rs){
   const box=$('resultList');box.replaceChildren();
   const off=rs.filter(r=>Math.abs(r.cents)>15).sort((a,b)=>Math.abs(b.cents)-Math.abs(a.cents));
-  $('resultCard').classList.remove('hidden');
+  $('resultCard').classList.remove('hidden');$('resultCard').scrollIntoView({block:'nearest'});
   $('resultMeta').textContent=rs.length?`聽到 ${rs.length} 個音，${off.length} 個偏差超過 15 音分`:'這次沒有聽到可比對的音';
   off.forEach(r=>{const el=noteEl(r.bi,r.ni);if(el)el.classList.add('off')});
   off.slice(0,12).forEach(r=>{
@@ -812,7 +876,7 @@ function drawBeams(svg,ps){
 function refreshTarget(){
   const m=S.sel&&S.score?targetMidi():null;
   $('toneBtn').disabled=m===null;
-  $('targetText').textContent=m===null?'點譜上的音，可把它設成對音目標':`目標：第 ${S.sel.bi+1} 小節 ${pitchName(m)}　${Math.round(freqOf(m)*10)/10} Hz`;
+  $('targetText').textContent=m===null?'':`對音：第 ${S.sel.bi+1} 小節 ${pitchName(m)} ${Math.round(freqOf(m)*10)/10} Hz`;
 }
 function fillLoop(){
   for(const id of['loopA','loopB']){
@@ -907,7 +971,7 @@ function openPiece(p){
 
 /* ---------- 介面事件 ---------- */
 function setMode(m){
-  S.mode=m;
+  S.mode=m;$('settings').open=false;
   $('tabPractice').classList.toggle('on',m==='practice');$('tabEdit').classList.toggle('on',m==='edit');
   $('practiceBar').classList.toggle('hidden',m!=='practice');$('editBar').classList.toggle('hidden',m!=='edit');
   if(m==='edit'){if(S.playing)stop();stopTone()}
@@ -916,7 +980,7 @@ function setMode(m){
 function setOut(o){
   S.out=o;save('out',o);
   document.querySelectorAll('[data-out]').forEach(b=>b.classList.toggle('on',b.dataset.out===o));
-  $('outHint').textContent=o==='speaker'?'喇叭：固定用純音，示範音和測音可同時進行。音量開中等，平板離琴遠一點。':'耳機：示範音和測音可以同時進行，音色可自由選。';
+  $('outHint').textContent=o==='speaker'?'喇叭只用純音。音量開中等，平板離琴遠一點。':'';
   $('voice').disabled=o==='speaker';
   if(notch&&o!=='speaker')notch.frequency.setValueAtTime(NOTCH_OFF,ac.currentTime);
   if(tone)startTone();
