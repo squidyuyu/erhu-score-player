@@ -78,6 +78,8 @@ h1{margin:0;font-size:24px;line-height:32px;font-weight:600}
 #pitchNote{font-size:24px;line-height:32px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
 #pitchCents{font-size:14px;line-height:20px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap;display:block}
 #meter{position:relative;height:40px;border-radius:4px;background:var(--raised);overflow:hidden}
+.levelTrack{height:6px;margin-top:4px;border-radius:3px;background:var(--raised);overflow:hidden}
+#level{height:100%;width:0;background:var(--text)}
 #meter i{position:absolute;top:0;bottom:0;left:40%;width:20%;background:var(--band)}
 #meter b{position:absolute;bottom:2px;font-size:11px;font-weight:400;color:var(--muted);transform:translateX(-50%)}
 #meter::after{content:"";position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--muted)}
@@ -113,7 +115,7 @@ h1{margin:0;font-size:24px;line-height:32px;font-weight:600}
   .mark span{display:none}.mark{margin-right:0}
   #pieceSel{flex:1;min-width:0;max-width:none}
   .tuner{grid-template-columns:1fr auto auto}
-  #meter{grid-column:1/-1;grid-row:2}
+  .tuner>div:nth-child(2){grid-column:1/-1;grid-row:2}
   .transport{flex-wrap:wrap}
   .tempo{order:3;flex-basis:100%}
   #edit{margin:12px -12px -12px;padding:10px 12px}
@@ -190,7 +192,10 @@ h1{margin:0;font-size:24px;line-height:32px;font-weight:600}
   <div class="dock">
     <div class="tuner">
       <div><span id="pitchNote">—</span><span id="pitchCents">麥克風未開</span></div>
-      <div id="meter" aria-hidden="true"><i></i><b style="left:6%">−50</b><b style="left:94%">+50</b><div id="needle"></div></div>
+      <div>
+        <div id="meter" aria-hidden="true"><i></i><b style="left:6%">−50</b><b style="left:94%">+50</b><div id="needle"></div></div>
+        <div class="levelTrack" title="收音量"><div id="level"></div></div>
+      </div>
       <button id="micBtn">開麥克風</button>
       <button id="toneBtn" disabled>長音</button>
     </div>
@@ -251,6 +256,10 @@ h1{margin:0;font-size:24px;line-height:32px;font-weight:600}
               <button id="calBtn">喇叭校正</button>
             </div>
             <div id="outHint" class="lbl"></div>
+            <div id="micRow" class="row hidden">
+              <span class="lbl">麥克風</span>
+              <select id="micSel" aria-label="選擇麥克風" style="max-width:280px"></select>
+            </div>
           </section>
         </div>
       </details>
@@ -285,11 +294,12 @@ function jianpuOf(m,sc){
 }
 const pitchName=m=>{const r=Math.round(m);return NAMES[(r%12+12)%12]+(Math.floor(r/12)-1)};
 
+const MIC_FLOOR=.00025;  // 手機關掉自動增益後收音很小，門檻要低；雜音靠信心值擋
 /* YIN 單音音高偵測；回傳 {freq,conf} 或 null */
 function detectPitch(buf,sr){
   const W=Math.floor(buf.length/2),tMin=Math.floor(sr/1600),tMax=Math.min(W-1,Math.floor(sr/200));
   let e=0;for(let i=0;i<W;i++)e+=buf[i]*buf[i];
-  if(Math.sqrt(e/W)<0.0012)return null;
+  if(Math.sqrt(e/W)<MIC_FLOOR)return null;
   const d=new Float32Array(tMax+2);
   for(let t=1;t<=tMax+1;t++){let s=0;for(let i=0;i<W;i++){const x=buf[i]-buf[i+t];s+=x*x}d[t]=s}
   let run=0;const c=new Float32Array(tMax+2);c[0]=1;
@@ -433,28 +443,69 @@ function stopTone(){
 }
 
 /* ---------- 麥克風 ---------- */
-let micStream=null,analyser=null,notch=null,micTimer=null,recent=[];
-async function micOn(){
-  audio();
-  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){say('這個頁面無法使用麥克風。手機與平板要從 https 網址開啟。');return}
-  try{
-    micStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
-  }catch(e){say('麥克風沒有開成：請確認瀏覽器已允許麥克風。');return}
+let micStream=null,analyser=null,rawAn=null,micNodes=[],notch=null,micTimer=null,recent=[],micPeak=0,micWatch=null;
+const MIC_ERRORS={NotAllowedError:'麥克風被擋住了：請到瀏覽器的網站設定開啟麥克風。',NotFoundError:'找不到麥克風。',NotReadableError:'麥克風被別的 App 占用，請先關掉錄音或通話 App。'};
+const micConstraints=clean=>{
+  const a=clean?{echoCancellation:false,noiseSuppression:false,autoGainControl:false}:{};
+  if(S.micId)a.deviceId={exact:S.micId};
+  return{audio:Object.keys(a).length?a:true};
+};
+function micGraph(){
   const src=ac.createMediaStreamSource(micStream);
   const hp=ac.createBiquadFilter();hp.type='highpass';hp.frequency.value=200;
   analyser=ac.createAnalyser();analyser.fftSize=4096;analyser.smoothingTimeConstant=0;
+  rawAn=ac.createAnalyser();rawAn.fftSize=2048;rawAn.smoothingTimeConstant=0;
   notch=ac.createBiquadFilter();notch.type='notch';notch.Q.value=12;notch.frequency.value=NOTCH_OFF;
-  src.connect(hp);hp.connect(notch);notch.connect(analyser);
-  $('micBtn').classList.add('on');$('micBtn').textContent='關麥克風';setPitch('—','等你拉');
-  const buf=new Float32Array(analyser.fftSize);
-  micTimer=setInterval(()=>{analyser.getFloatTimeDomainData(buf);showPitch(buf,ac.sampleRate)},40);
+  // 接到靜音輸出，確保手機瀏覽器一定會處理這條訊號
+  const mute=ac.createGain();mute.gain.value=0;
+  src.connect(rawAn);src.connect(hp);hp.connect(notch);notch.connect(analyser);analyser.connect(mute);rawAn.connect(mute);mute.connect(ac.destination);
+  micNodes=[src,hp,notch,analyser,rawAn,mute];
+}
+function micDrop(){
+  clearInterval(micTimer);micTimer=null;clearTimeout(micWatch);micWatch=null;
+  micNodes.forEach(n=>{try{n.disconnect()}catch(e){}});micNodes=[];
+  if(micStream)micStream.getTracks().forEach(t=>t.stop());
+  micStream=null;
+}
+async function micOn(clean=true){
+  audio();
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){say('這個頁面無法使用麥克風。手機與平板要從 https 網址開啟。');return}
+  try{
+    micStream=await navigator.mediaDevices.getUserMedia(micConstraints(clean));
+    await ac.resume();
+    micGraph();
+  }catch(e){micDrop();say(MIC_ERRORS[e.name]||`麥克風沒有開成（${e.name}）。`);return}
+  $('micBtn').classList.add('on');$('micBtn').textContent='關麥克風';setPitch('—','等你拉');say('');
+  micStream.getAudioTracks()[0].onmute=()=>say('麥克風被系統暫停了，請回到這個頁面或檢查通話 App。');
+  listMics();
+  const buf=new Float32Array(analyser.fftSize),raw=new Float32Array(rawAn.fftSize);
+  micPeak=0;
+  micTimer=setInterval(()=>{
+    if(ac.state!=='running')ac.resume();
+    rawAn.getFloatTimeDomainData(raw);
+    let e=0;for(let i=0;i<raw.length;i++)e+=raw[i]*raw[i];
+    const r=Math.sqrt(e/raw.length);micPeak=Math.max(micPeak,r);
+    $('level').style.width=Math.max(0,Math.min(100,(20*Math.log10(r+1e-7)+80)*2))+'%';
+    analyser.getFloatTimeDomainData(buf);showPitch(buf,ac.sampleRate);
+  },40);
+  micWatch=setTimeout(()=>{
+    if(micPeak>=.00002)return;
+    if(clean){micDrop();micOn(false)}   // 完全無聲時改用裝置預設收音
+    else say('麥克風沒有收到聲音：請檢查裝置的麥克風開關，或到「設定」換一支麥克風。');
+  },2500);
 }
 function micOff(){
-  clearInterval(micTimer);micTimer=null;
-  if(micStream)micStream.getTracks().forEach(t=>t.stop());
-  micStream=null;recent=[];
-  $('micBtn').classList.remove('on');$('micBtn').textContent='開麥克風';
+  micDrop();recent=[];
+  $('micBtn').classList.remove('on');$('micBtn').textContent='開麥克風';$('level').style.width='0';
   setPitch('—','麥克風未開');$('needle').style.left='50%';$('needle').classList.remove('good');
+}
+async function listMics(){
+  try{
+    const list=(await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==='audioinput');
+    const s=$('micSel');s.replaceChildren(new Option('預設麥克風',''));
+    list.forEach((d,i)=>{if(d.deviceId&&d.deviceId!=='default')s.append(new Option(d.label||`麥克風 ${i+1}`,d.deviceId))});
+    s.value=S.micId;$('micRow').classList.toggle('hidden',s.options.length<2);
+  }catch(e){}
 }
 const setPitch=(a,b)=>{$('pitchNote').textContent=a;$('pitchCents').textContent=b};
 function showPitch(buf,sr){
@@ -1000,6 +1051,8 @@ function init(){
   document.querySelectorAll('[data-out]').forEach(b=>b.onclick=()=>setOut(b.dataset.out));
   $('micBtn').onclick=()=>{if(micStream){if(F)stopFollow();micOff()}else micOn()};
   $('followBtn').onclick=()=>F?stopFollow():startFollow();
+  S.micId=load('micId','');
+  $('micSel').onchange=async e=>{S.micId=e.target.value;save('micId',S.micId);if(micStream){if(F)stopFollow();micDrop();await micOn()}};
   $('autoHoldBtn').onclick=()=>{S.autoHold=!S.autoHold;$('autoHoldBtn').classList.toggle('on',S.autoHold);if(F)F.autoHold=S.autoHold};
   $('accBtn').onclick=()=>{S.accompany=!S.accompany;$('accBtn').classList.toggle('on',S.accompany)};
   $('calBtn').onclick=()=>calibrate();
