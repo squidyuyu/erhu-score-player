@@ -104,6 +104,19 @@ h1{margin:0;font-size:24px;line-height:32px;font-weight:600}
 .digit{min-width:46px;padding:0;font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}
 .bad-info{color:var(--bad);font-size:14px}
 #fileInput{display:none}
+#ocrDialog{width:min(640px,calc(100vw - 24px));max-height:calc(100dvh - 24px);padding:16px;border:1px solid var(--control);border-radius:6px;background:var(--surface);color:var(--text)}
+#ocrDialog::backdrop{background:rgba(0,0,0,.45)}
+#ocrDialog[open]{display:grid;gap:12px}
+.ocrHead{display:flex;justify-content:space-between;align-items:center}
+.ocrHead h2{margin:0;font-size:18px;font-weight:600}
+.field{display:grid;gap:4px;font-size:14px;font-weight:500}
+.field input{min-height:44px;padding:0 8px;border:1px solid var(--control);border-radius:6px;background:var(--surface);width:100%;font-weight:400}
+.field input[type=file]{padding:8px}
+#ocrDialog a{color:var(--accent)}
+#ocrStage{text-align:center;background:var(--raised);border-radius:4px;padding:8px}
+#ocrWrap{position:relative;display:inline-block;line-height:0;touch-action:none;cursor:crosshair}
+#ocrCanvas{display:block;max-width:100%;max-height:48dvh;width:auto;height:auto;background:#fff}
+#ocrBox{position:absolute;border:2px solid var(--accent);background:rgba(29,95,191,.12);pointer-events:none}
 
 #resultCard{margin-top:16px}
 #resultCard h2{margin:0;font-size:16px;font-weight:600}
@@ -129,6 +142,7 @@ h1{margin:0;font-size:24px;line-height:32px;font-weight:600}
     <span>二胡譜播放器</span>
   </div>
   <select id="pieceSel" aria-label="選擇樂譜"></select>
+  <button id="ocrBtn">辨識樂譜</button>
   <button id="importBtn">匯入譜檔</button>
   <input id="fileInput" type="file" accept=".json,application/json" aria-label="選擇譜檔">
   <div class="seg">
@@ -188,6 +202,33 @@ h1{margin:0;font-size:24px;line-height:32px;font-weight:600}
     <div id="resultList"></div>
   </section>
 </main>
+<dialog id="ocrDialog" aria-labelledby="ocrTitle">
+  <div class="ocrHead"><h2 id="ocrTitle">辨識樂譜</h2><button id="ocrClose">關閉</button></div>
+  <label class="field">Gemini 金鑰
+    <input id="ocrKey" type="password" autocomplete="off" spellcheck="false">
+  </label>
+  <div class="lbl">金鑰只存在這台裝置。<a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">取得金鑰</a>。免費方案上傳的圖片，Google 可能用於改善模型或由人工檢視。</div>
+  <label class="field">樂譜檔案（PDF 或照片）
+    <input id="ocrFile" type="file" accept=".pdf,application/pdf,image/*">
+  </label>
+  <div id="ocrPageRow" class="row hidden">
+    <button id="ocrPrev">上一頁</button>
+    <input id="ocrPage" type="number" min="1" aria-label="頁碼">
+    <span id="ocrTotal" class="lbl"></span>
+    <button id="ocrNext">下一頁</button>
+  </div>
+  <div id="ocrStage" class="hidden">
+    <div id="ocrWrap"><canvas id="ocrCanvas" width="0" height="0"></canvas><div id="ocrBox" class="hidden"></div></div>
+  </div>
+  <label class="field">曲名（頁面有多首時填）
+    <input id="ocrHint" type="text" placeholder="例如：練習13">
+  </label>
+  <div id="ocrStatus" class="lbl" role="status"></div>
+  <div class="row">
+    <button id="ocrRun" class="primary" disabled>開始辨識</button>
+    <button id="ocrClear" disabled>清除框選</button>
+  </div>
+</dialog>
 <div id="practiceBar">
   <div class="dock">
     <div class="tuner">
@@ -271,7 +312,7 @@ h1{margin:0;font-size:24px;line-height:32px;font-weight:600}
 /* ---------- 共用資料 ---------- */
 const SCALE=[0,2,4,5,7,9,11];
 const NAMES=['C','C♯','D','D♯','E','F','F♯','G','G♯','A','A♯','B'];
-const TONICS=[['C',60],['D',62],['E',64],['F',65],['G',67],['A',69],['B♭',58]];
+const TONICS=[['C',60],['D',62],['E',64],['F',65],['G',67],['A',69],['B♭',58],['E♭',63]];
 const DEMO={format:'erhu-score-1',id:'demo-d-scale',title:'D 調音階（內建）',source:'內建示範',notation:'jianpu',tonic:62,tonicName:'D',meter:[4,4],tempo:72,bars:[
   [{n:1,o:0,a:0,b:1},{n:2,o:0,a:0,b:1},{n:3,o:0,a:0,b:1},{n:4,o:0,a:0,b:1}],
   [{n:5,o:0,a:0,b:1},{n:6,o:0,a:0,b:1},{n:7,o:0,a:0,b:1},{n:1,o:1,a:0,b:1}],
@@ -822,8 +863,8 @@ function layoutTies(){
 }
 /* ---------- 線譜畫面 ---------- */
 const LETTERS='CDEFGAB',NATURAL=[0,2,4,5,7,9,11];
-const KEYSIG={C:[],G:['F'],D:['F','C'],A:['F','C','G'],E:['F','C','G','D'],F:['B'],'B♭':['B','E']};
-const SHARP_Y=[8,5,9,6],FLAT_Y=[4,7];  // 調號在譜表上的級數，E4 = 0
+const KEYSIG={C:[],G:['F'],D:['F','C'],A:['F','C','G'],E:['F','C','G','D'],F:['B'],'B♭':['B','E'],'E♭':['B','E','A']};
+const SHARP_Y=[8,5,9,6],FLAT_Y=[4,7,3];  // 調號在譜表上的級數，E4 = 0
 const NS='http://www.w3.org/2000/svg';
 const svgEl=(tag,attrs,parent)=>{const e=document.createElementNS(NS,tag);for(const k in attrs)e.setAttribute(k,attrs[k]);if(parent)parent.append(e);return e};
 const CLEF='M14 36C7 36 6 26 14 24C23 22 27 33 20 39C12 45 1 38 2 28C3 17 15 12 17 2C18-4 16-10 14-12C10-9 9-2 11 8L19 52C20 59 12 61 10 56';
@@ -950,6 +991,167 @@ function syncEdit(){
   document.querySelectorAll('[data-len]').forEach(b=>b.classList.toggle('on',+b.dataset.len===n.b));
   document.querySelectorAll('.digit').forEach(b=>b.classList.toggle('on',+b.dataset.d===n.n));
 }
+/* ---------- 樂譜辨識：瀏覽器直接呼叫 Gemini，金鑰只存在這台裝置 ---------- */
+const PDFJS='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';
+const GEMINI='https://generativelanguage.googleapis.com/v1beta/models';
+const OCR_SIDE=2400;
+const O={pdf:null,page:1,name:'',crop:null,drag:null,model:'gemini-3.8-flash'};
+const OCR_SCHEMA={type:'object',required:['title','notation','tonic','meter','bars'],properties:{
+  title:{type:'string'},
+  notation:{type:'string',enum:['jianpu','staff']},
+  tonic:{type:'string',enum:TONICS.map(t=>t[0])},
+  meter:{type:'array',items:{type:'integer'},minItems:2,maxItems:2},
+  tempo:{type:'integer'},
+  uncertain:{type:'array',items:{type:'string'}},
+  bars:{type:'array',items:{type:'object',required:['notes'],properties:{notes:{type:'array',items:{
+    type:'object',required:['n','o','a','b'],properties:{
+      n:{type:'integer',description:'1-7 scale degree, 0 rest'},
+      o:{type:'integer',description:'octave relative to tonic octave'},
+      a:{type:'integer',description:'-1 flat, 0 none, 1 sharp'},
+      b:{type:'number',description:'duration in quarter-note beats'},
+      tie:{type:'boolean',description:'tied to next note'}}}}}}}}};
+const ocrPrompt=hint=>`這是一張二胡樂譜圖片，可能是簡譜或五線譜。${hint?`只辨識標題為「${hint}」的那一首。`:'只辨識圖中最主要的一首。'}
+請忠實轉成結構化資料，不要補寫或修飾旋律：
+- 每個小節一筆 bars；反覆記號不要展開，照譜面順序列出。
+- 忽略指法、弓法、裝飾音與表情記號，並忽略紙背透出的淡色字跡。
+- n 是簡譜音級 1-7，休止符 n=0。o 是八度：簡譜上加一點 o=1，下加一點 o=-1，沒有點 o=0。
+- 五線譜也要換成音級，並用調號判斷 tonic。八度基準：C=C4、D=D4、E=E4、F=F4、G=G4、A=A4、B♭=B♭3、E♭=E♭4，這個音以上到下一個主音之前是 o=0。
+- a 只標譜上臨時升降記號：升 1、降 -1，其餘 0。
+- b 是四分音符拍數：四分 1、八分 0.5、十六分 0.25、二分 2；簡譜的「-」要併入前一音的拍數，附點乘 1.5。
+- tie 只在連音線連到相同音高時為 true。
+- tonic 看「1=D」或調號；看不出時用 D。meter 例如 [2,4]。
+- 看不清楚的地方，寫進 uncertain，例如「第 3 小節第 2 音」。`;
+
+function loadPdfJs(){
+  if(window.pdfjsLib)return Promise.resolve();
+  return new Promise((ok,no)=>{
+    const s=document.createElement('script');s.src=PDFJS+'pdf.min.js';
+    s.onload=()=>{pdfjsLib.GlobalWorkerOptions.workerSrc=PDFJS+'pdf.worker.min.js';ok()};
+    s.onerror=()=>no(new Error('PDF 工具載入失敗，請檢查網路。'));
+    document.head.append(s);
+  });
+}
+const ocrMsg=t=>{$('ocrStatus').textContent=t};
+function ocrReady(){
+  const c=$('ocrCanvas');
+  $('ocrStage').classList.toggle('hidden',!c.width);
+  $('ocrPageRow').classList.toggle('hidden',!O.pdf);
+  $('ocrRun').disabled=!c.width;
+  ocrBox();
+}
+function ocrBox(){
+  const b=$('ocrBox'),r=O.crop;b.classList.toggle('hidden',!r);
+  if(r)Object.assign(b.style,{left:r.x*100+'%',top:r.y*100+'%',width:r.w*100+'%',height:r.h*100+'%'});
+  $('ocrClear').disabled=!r;
+}
+async function ocrPdfPage(n){
+  const total=O.pdf.numPages;n=Math.max(1,Math.min(total,n||1));O.page=n;
+  $('ocrPage').value=n;$('ocrTotal').textContent=`/ ${total} 頁`;
+  ocrMsg('正在開啟這一頁…');
+  const page=await O.pdf.getPage(n),v1=page.getViewport({scale:1});
+  const vp=page.getViewport({scale:OCR_SIDE/Math.max(v1.width,v1.height)});
+  const c=$('ocrCanvas');c.width=Math.floor(vp.width);c.height=Math.floor(vp.height);
+  await page.render({canvasContext:c.getContext('2d'),viewport:vp,intent:'print'}).promise;  // print 不等畫面更新，分頁在背景也畫得完
+  O.crop=null;ocrReady();ocrMsg('拖曳框出要辨識的那一首；不框就辨識整頁。');
+}
+async function ocrFile(f){
+  O.name=f.name.replace(/\.[^.]+$/,'');O.pdf=null;O.crop=null;
+  const c=$('ocrCanvas');c.width=0;$('ocrRun').disabled=true;
+  try{
+    if(f.type==='application/pdf'||/\.pdf$/i.test(f.name)){
+      ocrMsg('正在開啟 PDF…');
+      await loadPdfJs();
+      O.pdf=await pdfjsLib.getDocument({data:new Uint8Array(await f.arrayBuffer())}).promise;
+      await ocrPdfPage(1);
+    }else{
+      const bmp=await createImageBitmap(f),k=Math.min(1,OCR_SIDE/Math.max(bmp.width,bmp.height));
+      c.width=Math.floor(bmp.width*k);c.height=Math.floor(bmp.height*k);
+      c.getContext('2d').drawImage(bmp,0,0,c.width,c.height);
+      ocrReady();ocrMsg('拖曳框出要辨識的那一首；不框就辨識整張。');
+    }
+  }catch(e){ocrReady();ocrMsg(e.message.startsWith('PDF 工具')?e.message:'這個檔案打不開，請換一個檔案。')}
+}
+function ocrCropCanvas(maxSide){
+  const c=$('ocrCanvas'),r=O.crop||{x:0,y:0,w:1,h:1};
+  const sx=r.x*c.width,sy=r.y*c.height,sw=r.w*c.width,sh=r.h*c.height,k=Math.min(1,maxSide/Math.max(sw,sh));
+  const o=document.createElement('canvas');o.width=Math.round(sw*k);o.height=Math.round(sh*k);
+  const g=o.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,o.width,o.height);
+  g.drawImage(c,sx,sy,sw,sh,0,0,o.width,o.height);
+  return o;
+}
+async function geminiPick(key){
+  const r=await fetch(`${GEMINI}?pageSize=200`,{headers:{'x-goog-api-key':key}});
+  if(!r.ok)return null;
+  const names=((await r.json()).models||[]).filter(m=>(m.supportedGenerationMethods||[]).includes('generateContent')).map(m=>m.baseModelId||m.name.replace('models/','')).filter(n=>/^gemini-[\d.]+-flash$/.test(n));
+  return names.sort((a,b)=>parseFloat(b.slice(7))-parseFloat(a.slice(7)))[0]||null;
+}
+async function geminiRead(key,b64,hint){
+  const body={contents:[{parts:[{inline_data:{mime_type:'image/jpeg',data:b64}},{text:ocrPrompt(hint)}]}],generationConfig:{responseMimeType:'application/json',responseJsonSchema:OCR_SCHEMA}};
+  for(let attempt=0;attempt<2;attempt++){
+    const r=await fetch(`${GEMINI}/${O.model}:generateContent`,{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':key},body:JSON.stringify(body)});
+    if(r.ok){
+      const j=await r.json(),text=j.candidates?.[0]?.content?.parts?.map(p=>p.text||'').join('');
+      if(!text)throw new Error('Gemini 沒有回傳結果，請框小一點再試一次。');
+      return JSON.parse(text);
+    }
+    if(r.status===404&&attempt===0){const m=await geminiPick(key);if(m&&m!==O.model){O.model=m;continue}}
+    if(r.status===429)throw new Error('Gemini 額度暫時用完了，請等一下再試。');
+    if(r.status===400||r.status===401||r.status===403)throw new Error('金鑰無效或沒有權限，請確認金鑰是否貼完整。');
+    throw new Error(`Gemini 暫時無法使用（${r.status}），請稍後再試。`);
+  }
+}
+function ocrToScore(j,hint,source,image){
+  const t=TONICS.find(x=>x[0]===j.tonic)||TONICS[1];
+  const num=(v,lo,hi,d)=>Number.isFinite(v)?Math.max(lo,Math.min(hi,v)):d;
+  const bars=(j.bars||[]).map(x=>(x.notes||[]).filter(n=>Number.isInteger(n.n)&&n.n>=0&&n.n<=7&&n.b>0).map(n=>{
+    const o={n:n.n,o:n.n?num(n.o,-2,2,0):0,a:n.n?num(n.a,-1,1,0):0,b:n.b};
+    if(n.tie&&n.n)o.tie=true;
+    return o;
+  })).filter(b=>b.length);
+  const meter=Array.isArray(j.meter)&&j.meter.length===2&&j.meter[0]>0&&j.meter[1]>0?j.meter:[4,4];
+  return{format:'erhu-score-1',id:`ocr-${Date.now()}`,title:hint||j.title||'辨識樂譜',source,notation:j.notation==='staff'?'staff':'jianpu',tonic:t[1],tonicName:t[0],meter,tempo:num(j.tempo,30,160,72),bars,sourceImage:image};
+}
+async function ocrRun(){
+  const key=$('ocrKey').value.trim();
+  if(!key){ocrMsg('請先貼上 Gemini 金鑰。');$('ocrKey').focus();return}
+  save('geminiKey',key);
+  const hint=$('ocrHint').value.trim(),btn=$('ocrRun');
+  btn.disabled=true;ocrMsg('辨識中，請稍候…');
+  try{
+    const b64=ocrCropCanvas(2200).toDataURL('image/jpeg',.85).split(',')[1];
+    const j=await geminiRead(key,b64,hint);
+    const src=O.name+(O.pdf?` 第 ${O.page} 頁`:'');
+    const sc=ocrToScore(j,hint,src,ocrCropCanvas(1200).toDataURL('image/jpeg',.7));
+    if(!validScore(sc))throw new Error('沒有讀到完整的樂譜，請框小一點再試一次。');
+    S.pieces.push(sc);S.score=sc;persist();fillPieces();openPiece(sc);setMode('edit');
+    $('ocrDialog').close();
+    const u=(j.uncertain||[]).slice(0,3).join('、');
+    say(`已匯入 ${sc.bars.length} 小節，請對照原譜校正。${u?`不確定：${u}。`:''}`);
+    scrollTo(0,0);
+  }catch(e){
+    ocrMsg(e instanceof SyntaxError?'回傳內容不完整，請再試一次。':e.message==='Failed to fetch'?'連不上 Gemini，請檢查網路。':e.message);
+  }finally{btn.disabled=false}
+}
+function setupOcr(){
+  $('ocrBtn').onclick=()=>{if(S.playing)stop();$('ocrKey').value=load('geminiKey','');$('ocrDialog').showModal()};
+  $('ocrClose').onclick=()=>$('ocrDialog').close();
+  $('ocrFile').onchange=e=>{const f=e.target.files[0];e.target.value='';if(f)ocrFile(f)};
+  $('ocrPage').onchange=e=>ocrPdfPage(+e.target.value);
+  $('ocrPrev').onclick=()=>ocrPdfPage(O.page-1);
+  $('ocrNext').onclick=()=>ocrPdfPage(O.page+1);
+  $('ocrClear').onclick=()=>{O.crop=null;ocrBox()};
+  $('ocrRun').onclick=ocrRun;
+  const w=$('ocrWrap'),at=e=>{const r=w.getBoundingClientRect();return{x:Math.max(0,Math.min(1,(e.clientX-r.left)/r.width)),y:Math.max(0,Math.min(1,(e.clientY-r.top)/r.height))}};
+  w.addEventListener('pointerdown',e=>{w.setPointerCapture(e.pointerId);O.drag=at(e);O.crop=null;ocrBox()});
+  w.addEventListener('pointermove',e=>{
+    if(!O.drag)return;
+    const p=at(e),d=O.drag;
+    O.crop={x:Math.min(p.x,d.x),y:Math.min(p.y,d.y),w:Math.abs(p.x-d.x),h:Math.abs(p.y-d.y)};ocrBox();
+  });
+  const end=()=>{O.drag=null;if(O.crop&&(O.crop.w<.03||O.crop.h<.02)){O.crop=null;ocrBox()}};
+  w.addEventListener('pointerup',end);w.addEventListener('pointercancel',end);
+}
+
 function setupEditor(){
   for(let d=0;d<=7;d++){
     const b=document.createElement('button');b.className='digit';b.dataset.d=d;b.textContent=d;
@@ -1039,7 +1241,7 @@ function setOut(o){
 function init(){
   S.a4=load('a4',442);S.voice=load('voice','piano');S.spkLevel=load('spkResidual',0);
   $('a4').value=S.a4;$('voice').value=S.voice;
-  setOut(load('out','speaker'));setupEditor();
+  setOut(load('out','speaker'));setupEditor();setupOcr();
   $('playBtn').onclick=()=>S.playing?stop():play();
   $('tempo').oninput=e=>{S.bpm=+e.target.value;$('tempoVal').textContent=S.bpm};
   const tg=(id,k)=>$(id).onclick=()=>{S[k]=!S[k];$(id).classList.toggle('on',S[k])};
