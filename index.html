@@ -46,7 +46,7 @@ h1{margin:0;font-size:24px;line-height:32px;font-weight:600}
 
 #score{display:grid;grid-template-columns:repeat(4,1fr);row-gap:16px}
 @media (max-width:640px){#score{grid-template-columns:repeat(2,1fr)}}
-.bar{position:relative;display:flex;align-items:flex-end;justify-content:space-around;min-height:92px;padding:18px 4px 12px;border-right:1.5px solid var(--text)}
+.bar{position:relative;display:flex;align-items:flex-end;justify-content:space-around;min-height:120px;padding:46px 4px 12px;border-right:1.5px solid var(--text)}
 .bar.bad{background:var(--bad-pale)}
 .bar.inLoop{box-shadow:inset 0 -4px 0 var(--active)}
 .barNo{position:absolute;top:0;left:4px;font-size:12px;color:var(--muted)}
@@ -62,6 +62,7 @@ h1{margin:0;font-size:24px;line-height:32px;font-weight:600}
 .ul.u2{bottom:3px}
 .acc{position:absolute;left:1px;top:10px;font-size:15px}
 .ext{color:var(--muted);margin-left:16px;font-weight:500}
+.fing{position:absolute;bottom:100%;left:50%;transform:translateX(-50%);white-space:pre;font-size:12px;line-height:13px;font-weight:600;text-align:center;color:var(--muted)}
 .trip{position:absolute;bottom:-10px;left:50%;transform:translateX(-50%);font-size:12px;font-style:italic;color:var(--muted)}
 .tie{position:absolute;left:50%;width:calc(100% + 44px);height:12px;top:-5px;border:1.5px solid var(--muted);border-bottom:0;border-radius:50% 50% 0 0/100% 100% 0 0;pointer-events:none}
 .staffRow{display:block;width:100%;height:auto;margin-bottom:4px;color:var(--text)}
@@ -829,6 +830,7 @@ function noteNode(n,bi,ni,beat=0){
   if(base<=.5){const u=document.createElement('i');u.className='ul';b.append(u)}
   if(base<=.25){const u=document.createElement('i');u.className='ul u2';b.append(u)}
   if(n.tie){const t=document.createElement('i');t.className='tie';b.append(t)}
+  if(n.f){const f=document.createElement('span');f.className='fing';f.textContent=n.f.join('\n');b.append(f)}
   if(isTriplet(n.b)&&Math.abs(beat-Math.round(beat))<1e-6){const t=document.createElement('span');t.className='trip';t.textContent='3';b.append(t)}
   const frag=document.createDocumentFragment();frag.append(b);
   if(dotted){const s=document.createElement('span');s.className='ext';s.style.marginLeft='0';s.textContent='·';frag.append(s)}
@@ -850,7 +852,7 @@ function render(){
     if(Math.abs(sum-barNeed(sc,bi))>1e-6){d.classList.add('bad');bad++}
     if(bi>=la&&bi<=lb)d.classList.add('inLoop');
     const mc=bi>0&&sc.meters&&sc.meters[bi];
-    const no=document.createElement('span');no.className='barNo';no.textContent=bi+1+(mc?`　${mc[0]}/${mc[1]}`:'');d.append(no);
+    const no=document.createElement('span');no.className='barNo';if(mc){no.textContent=`${mc[0]}/${mc[1]}`;d.append(no)}
     let beat=0;bar.forEach((n,ni)=>{d.append(noteNode(n,bi,ni,beat));beat+=n.b});
     box.append(d);
   });
@@ -885,7 +887,7 @@ function staffPos(n,sc){
   return{step:oct*7+li-37,alter:keyAlt+(n.a||0),keyAlt};
 }
 function renderStaff(box,la,lb){
-  const sc=S.score,W=1000,H=150,top=46,gap=10,col='currentColor';
+  const sc=S.score,hasF=sc.bars.some(b=>b.some(n=>n.f)),W=1000,top=hasF?96:46,H=top+104,gap=10,col='currentColor';
   const key=KEYSIG[sc.tonicName]||[],flatKey=FLAT_KEYS.includes(sc.tonicName);
   const yOf=st=>top+40-st*gap/2;
   const meterAt0=bi=>bi>0&&sc.meters&&sc.meters[bi];
@@ -914,7 +916,6 @@ function renderStaff(box,la,lb){
       const bar=sc.bars[bi],barW=(W-x0)*weights[c]/total,sum=bar.reduce((s,n)=>s+n.b,0),need=barNeed(sc,bi);
       if(Math.abs(sum-need)>1e-6){bad++;svgEl('rect',{x:bx,y:top-2,width:barW,height:44,fill:'var(--bad)'},svg)}
       if(bi>=la&&bi<=lb)svgEl('rect',{x:bx,y:top+44,width:barW,height:5,fill:'var(--sel)'},svg);
-      svgEl('text',{x:bx+3,y:top-22,'font-size':13,fill:'var(--muted)'},svg).textContent=bi+1;
       svgEl('line',{x1:bx+barW,x2:bx+barW,y1:top,y2:top+40,stroke:col,'stroke-width':bi===sc.bars.length-1?4:1.3},svg);
       const mc=meterAt0(bi),off=mc?26:0;
       if(mc)meterText(mc,bx+14);
@@ -923,7 +924,7 @@ function renderStaff(box,la,lb){
         placed.push(drawStaffNote(svg,n,bi,ni,bx+off+18+beat/Math.max(need,sum)*(barW-off-30),beat,yOf,altered,sc));
         beat+=n.b;
       });
-      drawBeams(svg,placed);rowNotes.push(...placed);
+      drawBeams(svg,placed);drawFingers(svg,placed,top);rowNotes.push(...placed);
       bx+=barW;
     });
     rowNotes.forEach((p,i)=>{
@@ -949,12 +950,25 @@ function drawStaffNote(svg,n,bi,ni,x,beat,yOf,altered,sc){
   for(let s=-2;s>=step;s-=2)svgEl('line',{x1:x-11,x2:x+11,y1:yOf(s),y2:yOf(s),stroke:col,'stroke-width':1.2},g);
   for(let s=10;s<=step;s+=2)svgEl('line',{x1:x-11,x2:x+11,y1:yOf(s),y2:yOf(s),stroke:col,'stroke-width':1.2},g);
   const shown=step in altered?altered[step]:keyAlt;
-  if(alter!==shown){svgEl('text',{x:x-20,y:y+6,'font-size':19,fill:col},g).textContent=alter>0?'♯':alter<0?'♭':'♮';altered[step]=alter}
+  if(alter!==shown){svgEl('text',{class:'accTxt',x:x-25,y:y+(alter<0?5:9),'font-size':27,'font-weight':700,fill:col},g).textContent=alter>0?'♯':alter<0?'♭':'♮';altered[step]=alter}
   svgEl('ellipse',{class:'head',cx:x,cy:y,rx:6.6,ry:4.8,transform:`rotate(-20 ${x} ${y})`,fill:base>=2?'none':col,stroke:col,'stroke-width':base>=2?2:1},g);
   const up=step<4,stemX=up?x+6:x-6,stemEnd=y+(up?-34:34);
   if(base<4)svgEl('line',{class:'stem',x1:stemX,x2:stemX,y1:y,y2:stemEnd,stroke:col,'stroke-width':1.5},g);
   if(dotted)svgEl('circle',{cx:x+12,cy:y-(step%2?0:5),r:2.2,fill:col},g);
   return{n,x,y,up,beat,base,stemX,stemEnd,g};
+}
+/* 指法放在譜表上方：比譜表、符頭、往上的符桿都高，多個字由上到下疊 */
+function drawFingers(svg,ps,top){
+  ps.forEach(p=>{
+    if(!p.n.f||!p.n.f.length)return;
+    const st=p.g&&p.g.querySelector('.stem'),stemTop=st?Math.min(+st.getAttribute('y1'),+st.getAttribute('y2')):p.y;
+    let y=Math.min(top-8,p.y-12,stemTop-6);
+    [...p.n.f].reverse().forEach(t=>{
+      const cn=/[內外内]/.test(t);
+      svgEl('text',{class:'finger',x:p.x,y,'font-size':cn?14:16,'font-weight':cn?500:700,'text-anchor':'middle',fill:'currentColor'},svg).textContent=t;
+      y-=cn?16:15;
+    });
+  });
 }
 /* 同一拍內的八分、十六分連成符槓；落單的畫符尾 */
 function drawBeams(svg,ps){
