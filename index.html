@@ -1239,7 +1239,14 @@ function validScore(o){
 }
 function fillPieces(){
   const s=$('pieceSel');s.replaceChildren();
-  S.pieces.forEach((p,i)=>{const o=document.createElement('option');o.value=i;o.textContent=p.title;s.append(o)});
+  // 音階練習放在同一組，其他譜放另一組
+  const groups={};
+  S.pieces.forEach((p,i)=>{
+    const g=p.id.startsWith('scale-')?'音階練習':'樂曲';
+    if(!groups[g]){groups[g]=document.createElement('optgroup');groups[g].label=g}
+    const o=document.createElement('option');o.value=i;o.textContent=p.title;groups[g].append(o);
+  });
+  ['音階練習','樂曲'].forEach(g=>groups[g]&&s.append(groups[g]));
   s.value=S.pieces.indexOf(S.score);
 }
 function openPiece(p){
@@ -1323,9 +1330,10 @@ function init(){
   S.pieces=[DEMO,...await allScores()];
   // 內建譜：自己校正過的版本存在這台裝置，優先使用
   try{
-    const r=await fetch('scales.json');
-    if(r.ok)for(const x of await r.json())if(validScore(x)&&!S.pieces.some(p=>p.id===x.id))S.pieces.push(x);
-  }catch(e){}
+    const r=await fetch('scales.json',{cache:'no-cache'});
+    if(!r.ok)throw 0;
+    for(const x of await r.json())if(validScore(x)&&!S.pieces.some(p=>p.id===x.id))S.pieces.push(x);
+  }catch(e){say('內建的音階練習沒有載入，請確認網路後重新整理。')}
   const last=load('last',null);
   S.score=S.pieces.find(p=>p.id===last)||S.pieces[S.pieces.length-1];
   fillPieces();openPiece(S.score);
