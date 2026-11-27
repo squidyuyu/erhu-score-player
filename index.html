@@ -62,6 +62,7 @@ h1{margin:0;font-size:24px;line-height:32px;font-weight:600}
 .ul.u2{bottom:3px}
 .acc{position:absolute;left:1px;top:10px;font-size:15px}
 .ext{color:var(--muted);margin-left:16px;font-weight:500}
+.trip{position:absolute;bottom:-10px;left:50%;transform:translateX(-50%);font-size:12px;font-style:italic;color:var(--muted)}
 .tie{position:absolute;left:50%;width:calc(100% + 44px);height:12px;top:-5px;border:1.5px solid var(--muted);border-bottom:0;border-radius:50% 50% 0 0/100% 100% 0 0;pointer-events:none}
 .staffRow{display:block;width:100%;height:auto;margin-bottom:4px;color:var(--text)}
 .sn{cursor:pointer}
@@ -144,7 +145,7 @@ h1{margin:0;font-size:24px;line-height:32px;font-weight:600}
   <select id="pieceSel" aria-label="選擇樂譜"></select>
   <button id="ocrBtn">辨識樂譜</button>
   <button id="importBtn">匯入譜檔</button>
-  <input id="fileInput" type="file" accept=".json,application/json" aria-label="選擇譜檔">
+  <input id="fileInput" type="file" accept=".json,application/json" multiple aria-label="選擇譜檔">
   <div class="seg">
     <button id="tabPractice" class="on">練習</button>
     <button id="tabEdit">校正</button>
@@ -187,6 +188,7 @@ h1{margin:0;font-size:24px;line-height:32px;font-weight:600}
         <button data-len="0.5">八分</button>
         <button data-len="1">四分</button>
         <button data-len="1.5">附點四分</button>
+        <button data-len="0.3333333333333333">三連音</button>
         <button data-len="2">二分</button>
       </div>
       <div class="row">
@@ -326,6 +328,10 @@ const say=t=>{$('status').textContent=t};
 
 /* ---------- 音高計算 ---------- */
 const noteMidi=(n,sc)=>n.n===0?null:sc.tonic+SCALE[n.n-1]+12*(n.o||0)+(n.a||0);
+// meters：{小節索引: [拍數, 拍值]}，從那一小節起改用新拍號
+const meterAt=(sc,bi)=>{for(let i=bi;i>=0;i--){const m=sc.meters&&sc.meters[i];if(m)return m}return sc.meter};
+const barNeed=(sc,bi)=>{const m=meterAt(sc,bi);return m[0]*4/m[1]};
+const isTriplet=b=>Math.abs(b*3-Math.round(b*3))<1e-6&&Math.abs(b*4-Math.round(b*4))>1e-6;
 const freqOf=m=>S.a4*Math.pow(2,(m-69)/12);
 const midiOf=f=>69+12*Math.log2(f/S.a4);
 function jianpuOf(m,sc){
@@ -453,7 +459,7 @@ async function play(){
   if(!timeline.length){say('這段沒有音符');return}
   S.playing=true;$('playBtn').textContent='停止';$('playBtn').classList.add('on');
   hlQueue=[];
-  const spb=60/S.bpm,beats=S.score.meter[0];
+  const spb=60/S.bpm,beats=meterAt(S.score,timeline[seqPos].bi)[0];
   nextT=ac.currentTime+.15;
   for(let i=0;i<beats;i++)click(nextT+i*spb,i===0);
   nextT+=beats*spb;
@@ -810,7 +816,7 @@ function showResults(rs){
 }
 
 /* ---------- 樂譜畫面 ---------- */
-function noteNode(n,bi,ni){
+function noteNode(n,bi,ni,beat=0){
   const b=document.createElement('button');
   b.className='note';b.dataset.b=bi;b.dataset.n=ni;
   const whole=n.b>=2?Math.round(n.b):1;
@@ -823,6 +829,7 @@ function noteNode(n,bi,ni){
   if(base<=.5){const u=document.createElement('i');u.className='ul';b.append(u)}
   if(base<=.25){const u=document.createElement('i');u.className='ul u2';b.append(u)}
   if(n.tie){const t=document.createElement('i');t.className='tie';b.append(t)}
+  if(isTriplet(n.b)&&Math.abs(beat-Math.round(beat))<1e-6){const t=document.createElement('span');t.className='trip';t.textContent='3';b.append(t)}
   const frag=document.createDocumentFragment();frag.append(b);
   if(dotted){const s=document.createElement('span');s.className='ext';s.style.marginLeft='0';s.textContent='·';frag.append(s)}
   for(let i=1;i<whole;i++){const s=document.createElement('span');s.className='ext';s.textContent='－';frag.append(s)}
@@ -832,18 +839,19 @@ function render(){
   const sc=S.score,box=$('score');box.replaceChildren();
   $('pieceTitle').textContent=sc.title;
   $('pieceMeta').textContent=`1=${sc.tonicName}　${sc.meter[0]}/${sc.meter[1]}　${sc.source||''}`;
-  const need=sc.meter[0]*4/sc.meter[1];let bad=0;
+  let bad=0;
   const [la,lb]=S.loopView?[S.loopView.a,S.loopView.b]:S.loop?barsRange():[-1,-1];
   $('viewBtn').textContent=S.view==='staff'?'看簡譜':'看線譜';
   box.style.display=S.view==='staff'?'block':'';
-  if(S.view==='staff')bad=renderStaff(box,need,la,lb);
+  if(S.view==='staff')bad=renderStaff(box,la,lb);
   else sc.bars.forEach((bar,bi)=>{
     const d=document.createElement('div');d.className='bar';
     const sum=bar.reduce((s,n)=>s+n.b,0);
-    if(Math.abs(sum-need)>1e-6){d.classList.add('bad');bad++}
+    if(Math.abs(sum-barNeed(sc,bi))>1e-6){d.classList.add('bad');bad++}
     if(bi>=la&&bi<=lb)d.classList.add('inLoop');
-    const no=document.createElement('span');no.className='barNo';no.textContent=bi+1;d.append(no);
-    bar.forEach((n,ni)=>d.append(noteNode(n,bi,ni)));
+    const mc=bi>0&&sc.meters&&sc.meters[bi];
+    const no=document.createElement('span');no.className='barNo';no.textContent=bi+1+(mc?`　${mc[0]}/${mc[1]}`:'');d.append(no);
+    let beat=0;bar.forEach((n,ni)=>{d.append(noteNode(n,bi,ni,beat));beat+=n.b});
     box.append(d);
   });
   $('badInfo').textContent=bad?`有 ${bad} 個小節的拍數不對（紅底）`:'';
@@ -864,6 +872,7 @@ function layoutTies(){
 /* ---------- 線譜畫面 ---------- */
 const LETTERS='CDEFGAB',NATURAL=[0,2,4,5,7,9,11];
 const KEYSIG={C:[],G:['F'],D:['F','C'],A:['F','C','G'],E:['F','C','G','D'],F:['B'],'B♭':['B','E'],'E♭':['B','E','A']};
+const FLAT_KEYS=['F','B♭','E♭'];  // 調號是降記號的調；F 的名稱沒有 ♭，不能只看名稱
 const SHARP_Y=[8,5,9,6],FLAT_Y=[4,7,3];  // 調號在譜表上的級數，E4 = 0
 const NS='http://www.w3.org/2000/svg';
 const svgEl=(tag,attrs,parent)=>{const e=document.createElementNS(NS,tag);for(const k in attrs)e.setAttribute(k,attrs[k]);if(parent)parent.append(e);return e};
@@ -871,46 +880,58 @@ const CLEF='M14 36C7 36 6 26 14 24C23 22 27 33 20 39C12 45 1 38 2 28C3 17 15 12 
 /* 把簡譜音換成譜表位置：step 以 E4 = 0，每升一級 +1 */
 function staffPos(n,sc){
   const li=(LETTERS.indexOf(sc.tonicName[0])+n.n-1)%7,m=noteMidi(n,sc);
-  const keyAlt=(KEYSIG[sc.tonicName]||[]).includes(LETTERS[li])?(sc.tonicName.includes('♭')?-1:1):0;
+  const keyAlt=(KEYSIG[sc.tonicName]||[]).includes(LETTERS[li])?(FLAT_KEYS.includes(sc.tonicName)?-1:1):0;
   const oct=Math.round((m-(n.a||0)-keyAlt-NATURAL[li])/12);
   return{step:oct*7+li-37,alter:keyAlt+(n.a||0),keyAlt};
 }
-function renderStaff(box,need,la,lb){
-  const sc=S.score,perRow=box.clientWidth<520?2:4,W=1000,H=150,top=46,gap=10,col='currentColor';
-  const key=KEYSIG[sc.tonicName]||[],flatKey=sc.tonicName.includes('♭');
+function renderStaff(box,la,lb){
+  const sc=S.score,W=1000,H=150,top=46,gap=10,col='currentColor';
+  const key=KEYSIG[sc.tonicName]||[],flatKey=FLAT_KEYS.includes(sc.tonicName);
   const yOf=st=>top+40-st*gap/2;
+  const meterAt0=bi=>bi>0&&sc.meters&&sc.meters[bi];
+  // 依音符數分行：小螢幕一行約 16 個音，大螢幕約 32 個，最多 4 小節
+  const cap=box.clientWidth<520?16:32,rows=[];let cur=[],cnt=0;
+  sc.bars.forEach((bar,bi)=>{
+    const w=Math.max(bar.length,3);
+    if(cur.length&&(cnt+w>cap||cur.length>=4)){rows.push(cur);cur=[];cnt=0}
+    cur.push(bi);cnt+=w;
+  });
+  if(cur.length)rows.push(cur);
   let bad=0;
-  for(let r=0;r<sc.bars.length;r+=perRow){
+  rows.forEach((row,ri)=>{
     const svg=svgEl('svg',{class:'staffRow',viewBox:`0 0 ${W} ${H}`},box);
     for(let l=0;l<5;l++)svgEl('line',{x1:0,x2:W,y1:top+l*gap,y2:top+l*gap,stroke:col,'stroke-width':1},svg);
     svgEl('path',{d:CLEF,fill:'none',stroke:col,'stroke-width':2.4,'stroke-linecap':'round',transform:`translate(10,${top})`},svg);
     let x0=44;
     key.forEach((k,i)=>{svgEl('text',{x:x0+i*11,y:yOf((flatKey?FLAT_Y:SHARP_Y)[i])+6,'font-size':20,fill:col},svg).textContent=flatKey?'♭':'♯'});
     x0+=key.length*11+6;
-    if(r===0){
-      sc.meter.forEach((v,i)=>{svgEl('text',{x:x0+8,y:top+17+i*20,'font-size':24,'font-weight':700,'text-anchor':'middle',fill:col},svg).textContent=v});
-      x0+=24;
-    }
-    const barW=(W-x0)/perRow,rowNotes=[];
-    for(let c=0;c<perRow&&r+c<sc.bars.length;c++){
-      const bi=r+c,bar=sc.bars[bi],bx=x0+c*barW,sum=bar.reduce((s,n)=>s+n.b,0);
+    const meterText=(m,x)=>m.forEach((v,i)=>{svgEl('text',{x,y:top+17+i*20,'font-size':24,'font-weight':700,'text-anchor':'middle',fill:col},svg).textContent=v});
+    if(ri===0){meterText(sc.meter,x0+8);x0+=24}
+    const weights=row.map(bi=>Math.max(sc.bars[bi].length,3)+(meterAt0(bi)?1.5:0)),total=weights.reduce((s,v)=>s+v,0);
+    let bx=x0;
+    const rowNotes=[];
+    row.forEach((bi,c)=>{
+      const bar=sc.bars[bi],barW=(W-x0)*weights[c]/total,sum=bar.reduce((s,n)=>s+n.b,0),need=barNeed(sc,bi);
       if(Math.abs(sum-need)>1e-6){bad++;svgEl('rect',{x:bx,y:top-2,width:barW,height:44,fill:'var(--bad)'},svg)}
       if(bi>=la&&bi<=lb)svgEl('rect',{x:bx,y:top+44,width:barW,height:5,fill:'var(--sel)'},svg);
       svgEl('text',{x:bx+3,y:top-22,'font-size':13,fill:'var(--muted)'},svg).textContent=bi+1;
       svgEl('line',{x1:bx+barW,x2:bx+barW,y1:top,y2:top+40,stroke:col,'stroke-width':bi===sc.bars.length-1?4:1.3},svg);
+      const mc=meterAt0(bi),off=mc?26:0;
+      if(mc)meterText(mc,bx+14);
       let beat=0;const altered={},placed=[];
       bar.forEach((n,ni)=>{
-        placed.push(drawStaffNote(svg,n,bi,ni,bx+18+beat/Math.max(need,sum)*(barW-30),beat,yOf,altered,sc));
+        placed.push(drawStaffNote(svg,n,bi,ni,bx+off+18+beat/Math.max(need,sum)*(barW-off-30),beat,yOf,altered,sc));
         beat+=n.b;
       });
       drawBeams(svg,placed);rowNotes.push(...placed);
-    }
+      bx+=barW;
+    });
     rowNotes.forEach((p,i)=>{
       if(!p.n.tie||p.n.n===0)return;
       const nx=rowNotes[i+1],xe=nx?nx.x:W-4,y=p.y+(p.up?12:-12),d=p.up?10:-10;
       svgEl('path',{d:`M${p.x+7} ${y}Q${(p.x+xe)/2} ${y+d} ${xe-7} ${y}`,fill:'none',stroke:col,'stroke-width':1.6},svg);
     });
-  }
+  });
   return bad;
 }
 function drawStaffNote(svg,n,bi,ni,x,beat,yOf,altered,sc){
@@ -955,6 +976,9 @@ function drawBeams(svg,ps){
       });
       const beam=(a,b,off)=>svgEl('line',{x1:a,x2:b,y1:yb+off,y2:yb+off,stroke:col,'stroke-width':4.4},svg);
       beam(grp[0].stemX,grp[grp.length-1].stemX,0);
+      if(grp.length===3&&grp.every(q=>isTriplet(q.n.b))){
+        const t=svgEl('text',{x:(grp[0].stemX+grp[2].stemX)/2,y:up?yb-6:yb+18,'font-size':13,'font-style':'italic','font-weight':700,'text-anchor':'middle',fill:col},svg);t.textContent='3';
+      }
       grp.forEach((q,k)=>{
         if(q.base>.25)return;
         const o=grp[k+1],b=up?7:-7;
@@ -1003,7 +1027,7 @@ const OCR_SCHEMA={type:'object',required:['title','notation','tonic','meter','ba
   meter:{type:'array',items:{type:'integer'},minItems:2,maxItems:2},
   tempo:{type:'integer'},
   uncertain:{type:'array',items:{type:'string'}},
-  bars:{type:'array',items:{type:'object',required:['notes'],properties:{notes:{type:'array',items:{
+  bars:{type:'array',items:{type:'object',required:['notes'],properties:{meter:{type:'array',items:{type:'integer'},description:'only when the time signature changes at this bar'},notes:{type:'array',items:{
     type:'object',required:['n','o','a','b'],properties:{
       n:{type:'integer',description:'1-7 scale degree, 0 rest'},
       o:{type:'integer',description:'octave relative to tonic octave'},
@@ -1017,7 +1041,8 @@ const ocrPrompt=hint=>`這是一張二胡樂譜圖片，可能是簡譜或五線
 - n 是簡譜音級 1-7，休止符 n=0。o 是八度：簡譜上加一點 o=1，下加一點 o=-1，沒有點 o=0。
 - 五線譜也要換成音級，並用調號判斷 tonic。八度基準：C=C4、D=D4、E=E4、F=F4、G=G4、A=A4、B♭=B♭3、E♭=E♭4，這個音以上到下一個主音之前是 o=0。
 - a 只標譜上臨時升降記號：升 1、降 -1，其餘 0。
-- b 是四分音符拍數：四分 1、八分 0.5、十六分 0.25、二分 2；簡譜的「-」要併入前一音的拍數，附點乘 1.5。
+- b 是四分音符拍數：四分 1、八分 0.5、十六分 0.25、二分 2；三連音的八分音符每個 0.3333；簡譜的「-」要併入前一音的拍數，附點乘 1.5。
+- 圖中的每一行都要辨識，不要只讀第一行。拍號在中途改變時，在那一小節加上 meter，例如 [3,4]。
 - tie 只在連音線連到相同音高時為 true。
 - tonic 看「1=D」或調號；看不出時用 D。meter 例如 [2,4]。
 - 看不清楚的地方，寫進 uncertain，例如「第 3 小節第 2 音」。`;
@@ -1107,9 +1132,15 @@ function ocrToScore(j,hint,source,image){
     const o={n:n.n,o:n.n?num(n.o,-2,2,0):0,a:n.n?num(n.a,-1,1,0):0,b:n.b};
     if(n.tie&&n.n)o.tie=true;
     return o;
-  })).filter(b=>b.length);
+  }));
+  const meters={};
+  (j.bars||[]).forEach((x,i)=>{const m=x.meter;if(i>0&&bars[i].length&&Array.isArray(m)&&m.length===2&&m[0]>0&&m[1]>0)meters[i]=m});
+  // 0.3333 之類的近似值改成精確的 1/3
+  bars.forEach(b=>b.forEach(n=>{const t=Math.round(n.b*3)/3;if(Math.abs(n.b-t)<.01&&isTriplet(t))n.b=t}));
+  const keep=bars.map((b,i)=>b.length?i:-1).filter(i=>i>=0),fm={};
+  keep.forEach((i,k)=>{if(meters[i]&&k>0)fm[k]=meters[i]});
   const meter=Array.isArray(j.meter)&&j.meter.length===2&&j.meter[0]>0&&j.meter[1]>0?j.meter:[4,4];
-  return{format:'erhu-score-1',id:`ocr-${Date.now()}`,title:hint||j.title||'辨識樂譜',source,notation:j.notation==='staff'?'staff':'jianpu',tonic:t[1],tonicName:t[0],meter,tempo:num(j.tempo,30,160,72),bars,sourceImage:image};
+  return{format:'erhu-score-1',id:`ocr-${Date.now()}`,title:hint||j.title||'辨識樂譜',source,notation:j.notation==='staff'?'staff':'jianpu',tonic:t[1],tonicName:t[0],meter,tempo:num(j.tempo,30,160,72),bars:keep.map(i=>bars[i]),...(Object.keys(fm).length?{meters:fm}:{}),sourceImage:image};
 }
 async function ocrRun(){
   const key=$('ocrKey').value.trim();
@@ -1166,10 +1197,10 @@ function setupEditor(){
   $('insBtn').onclick=()=>change(()=>{const{bi,ni}=S.sel;S.score.bars[bi].splice(ni+1,0,{n:1,o:0,a:0,b:1});S.sel={bi,ni:ni+1}});
   $('delBtn').onclick=()=>change(()=>{
     const{bi,ni}=S.sel,bar=S.score.bars[bi];bar.splice(ni,1);
-    if(!bar.length)S.score.bars.splice(bi,1);
+    if(!bar.length){S.score.bars.splice(bi,1);if(S.score.meters){const m={};for(const k in S.score.meters)if(+k!==bi)m[+k>bi?+k-1:+k]=S.score.meters[k];S.score.meters=m}}
     S.sel=null;fillLoop();
   });
-  $('addBarBtn').onclick=()=>change(()=>{const{bi}=S.sel;S.score.bars.splice(bi+1,0,[{n:0,o:0,a:0,b:S.score.meter[0]*4/S.score.meter[1]}]);S.sel={bi:bi+1,ni:0};fillLoop()});
+  $('addBarBtn').onclick=()=>change(()=>{const{bi}=S.sel;S.score.bars.splice(bi+1,0,[{n:0,o:0,a:0,b:barNeed(S.score,bi)}]);if(S.score.meters){const m={};for(const k in S.score.meters)m[+k>bi?+k+1:+k]=S.score.meters[k];S.score.meters=m}S.sel={bi:bi+1,ni:0};fillLoop()});
   $('closeEdit').onclick=()=>{S.sel=null;render();syncEdit()};
   $('undoBtn').onclick=()=>{
     const p=S.undo.pop();if(!p)return;
@@ -1203,7 +1234,8 @@ function allScores(){return new Promise(res=>{
 })}
 function validScore(o){
   return o&&o.format==='erhu-score-1'&&typeof o.id==='string'&&typeof o.title==='string'&&Number.isFinite(o.tonic)&&Array.isArray(o.meter)&&Array.isArray(o.bars)&&o.bars.length&&
-    o.bars.every(b=>Array.isArray(b)&&b.length&&b.every(n=>Number.isInteger(n.n)&&n.n>=0&&n.n<=7&&n.b>0));
+    o.bars.every(b=>Array.isArray(b)&&b.length&&b.every(n=>Number.isInteger(n.n)&&n.n>=0&&n.n<=7&&n.b>0))&&
+    (o.meters===undefined||(typeof o.meters==='object'&&Object.values(o.meters).every(m=>Array.isArray(m)&&m.length===2&&m[0]>0&&m[1]>0)));
 }
 function fillPieces(){
   const s=$('pieceSel');s.replaceChildren();
@@ -1272,12 +1304,16 @@ function init(){
   addEventListener('resize',()=>{if(S.view==='staff')render();else layoutTies()});
   $('importBtn').onclick=()=>$('fileInput').click();
   $('fileInput').onchange=async e=>{
-    const f=e.target.files[0];e.target.value='';if(!f)return;
-    let o;try{o=JSON.parse(await f.text())}catch(err){say('這不是譜檔，打不開。');return}
-    if(!validScore(o)){say('譜檔格式不對，沒有匯入。');return}
-    const i=S.pieces.findIndex(p=>p.id===o.id);
-    if(i>=0)S.pieces[i]=o;else S.pieces.push(o);
-    S.score=o;persist();fillPieces();openPiece(o);say(`已匯入：${o.title}`);
+    const files=[...e.target.files];e.target.value='';if(!files.length)return;
+    const got=[];let skipped=0;
+    for(const f of files){
+      let o;try{o=JSON.parse(await f.text())}catch(err){skipped++;continue}
+      for(const x of Array.isArray(o)?o:[o])validScore(x)?got.push(x):skipped++;
+    }
+    if(!got.length){say('譜檔格式不對，沒有匯入。');return}
+    got.forEach(o=>{const i=S.pieces.findIndex(p=>p.id===o.id);if(i>=0)S.pieces[i]=o;else S.pieces.push(o);S.score=o;persist()});
+    S.score=got[0];fillPieces();openPiece(got[0]);
+    say(got.length===1?`已匯入：${got[0].title}`:`已匯入 ${got.length} 首，請從上方選單切換。`+(skipped?`有 ${skipped} 份格式不對，沒有匯入。`:''));
   };
   $('pieceSel').onchange=e=>{openPiece(S.pieces[+e.target.value]);fillPieces()};
 }
