@@ -1321,6 +1321,11 @@ function init(){
   init();
   db=await openDb();
   S.pieces=[DEMO,...await allScores()];
+  // 內建譜：自己校正過的版本存在這台裝置，優先使用
+  try{
+    const r=await fetch('scales.json');
+    if(r.ok)for(const x of await r.json())if(validScore(x)&&!S.pieces.some(p=>p.id===x.id))S.pieces.push(x);
+  }catch(e){}
   const last=load('last',null);
   S.score=S.pieces.find(p=>p.id===last)||S.pieces[S.pieces.length-1];
   fillPieces();openPiece(S.score);
